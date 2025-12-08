@@ -365,7 +365,7 @@ class GroqService:
                     failure_reason = "No properly formatted slides found."
                 elif len(slides) != 9:
                     # failure_reason = f"Expected 9 slides but got {len(slides)}."
-                    completed_slides = self._complete_slides_with_fallback(
+                    completed_slides = self._fill_missing_slides(
                         slides=slides,
                         language=language,
                         duration=duration,

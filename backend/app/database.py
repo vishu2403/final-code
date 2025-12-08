@@ -8,6 +8,8 @@ import logging
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.exc import OperationalError
+import time
+import random
 
 from .config import settings
 
@@ -29,6 +31,28 @@ def _normalize_database_url(raw_url) -> str:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _retry_on_deadlock(max_retries: int = 3, base_delay: float = 0.5):
+    """Decorator to retry on database deadlock with exponential backoff."""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except OperationalError as e:
+                    if "deadlock detected" not in str(e).lower():
+                        raise
+                    if attempt == max_retries - 1:
+                        raise
+                    delay = base_delay * (2 ** attempt) + random.uniform(0, 0.1)
+                    logger.warning(
+                        "Deadlock detected in %s, retrying in %.2fs (attempt %d/%d)",
+                        func.__name__, delay, attempt + 1, max_retries
+                    )
+                    time.sleep(delay)
+        return wrapper
+    return decorator
 
 # Create database engine with connection pooling
 database_url = _normalize_database_url(settings.database_url)
@@ -56,6 +80,7 @@ def get_db() -> Generator:
         db.close()
 
 
+@_retry_on_deadlock(max_retries=3, base_delay=0.5)
 def _ensure_chapter_material_schema() -> None:
     """Ensure chapter_materials has columns required by the ORM model."""
 
@@ -125,6 +150,7 @@ def _ensure_chapter_material_schema() -> None:
             text("ALTER TABLE chapter_materials ALTER COLUMN updated_at SET NOT NULL")
         )
 
+@_retry_on_deadlock(max_retries=3, base_delay=0.5)
 def _ensure_lecture_gen_core_columns() -> None:
     """Ensure essential columns exist on lecture_gen table."""
     inspector = inspect(engine)
@@ -173,6 +199,7 @@ def _ensure_lecture_gen_core_columns() -> None:
             )
         )
 
+@_retry_on_deadlock(max_retries=3, base_delay=0.5)
 def _ensure_lecture_gen_timestamps() -> None:
     """Ensure lecture_gen has timestamp columns required by ORM."""
 
@@ -236,6 +263,7 @@ def _ensure_lecture_gen_timestamps() -> None:
         )
 
 
+@_retry_on_deadlock(max_retries=3, base_delay=0.5)
 def _ensure_administrator_timestamps() -> None:
     """Ensure administrators table has timestamp defaults/columns."""
 
