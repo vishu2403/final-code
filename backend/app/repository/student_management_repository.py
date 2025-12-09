@@ -41,16 +41,13 @@ def fetch_existing_enrollments(admin_id: int, enrollments: Iterable[str]) -> Lis
 
 def insert_roster_entries(admin_id: int, entries: List[Dict[str, Any]]) -> None:
     """Insert roster entries for an admin."""
-
     if not entries:
         return
-
     insert_sql = (
         "INSERT INTO student_roster_entries "
-        "(admin_id, enrollment_number, first_name, last_name, std, division, auto_password) "
-        "VALUES (%(admin_id)s, %(enrollment_number)s, %(first_name)s, %(last_name)s, %(std)s, %(division)s, %(auto_password)s)"
+        "(admin_id, enrollment_number, first_name, last_name, std, division, auto_password, assigned_member_id) "
+        "VALUES (%(admin_id)s, %(enrollment_number)s, %(first_name)s, %(last_name)s, %(std)s, %(division)s, %(auto_password)s, %(assigned_member_id)s)"
     )
-
     payload = [
         {
             "admin_id": admin_id,
@@ -60,10 +57,10 @@ def insert_roster_entries(admin_id: int, entries: List[Dict[str, Any]]) -> None:
             "std": entry["std"],
             "division": entry.get("division"),
             "auto_password": entry["auto_password"],
+            "assigned_member_id": entry.get("assigned_member_id"),
         }
         for entry in entries
     ]
-
     with get_pg_cursor(dict_rows=False) as cur:
         cur.executemany(insert_sql, payload)
 

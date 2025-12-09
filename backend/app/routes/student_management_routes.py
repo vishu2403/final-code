@@ -147,16 +147,12 @@ async def upload_student_roster(
     admin_id = current_user["admin_id"]
     filename = (file.filename or "").lower()
     content_type = (file.content_type or "").lower()
-
     raw_bytes = await file.read()
     if not raw_bytes:
         raise HTTPException(status_code=400, detail="File is empty")
-
     duplicate_rows: List[dict] = []
-
     def _record_duplicate(**kwargs) -> None:
         duplicate_rows.append(_duplicate_row_payload(**kwargs))
-
     def _process_rows(rows: Iterable[dict]) -> List[dict]:
         entries: List[dict] = []
         seen_enrollments: set[str] = set()
@@ -166,7 +162,6 @@ async def upload_student_roster(
             last_name = _normalize_value(row.get("Last Name")) or None
             std = _normalize_value(row.get("Std"))
             division = _normalize_value(row.get("Div")) or None
-
             if not enrollment_number:
                 raise HTTPException(status_code=400, detail=f"Row {index}: Enrollment Number is required")
             if not (ENROLLMENT_MIN_LENGTH <= len(enrollment_number) <= ENROLLMENT_MAX_LENGTH):
@@ -191,7 +186,6 @@ async def upload_student_roster(
                 continue
             if not first_name or not std:
                 raise HTTPException(status_code=400, detail=f"Row {index}: First Name and Std are required")
-
             seen_enrollments.add(enrollment_number)
             entries.append(
                 {
@@ -205,15 +199,12 @@ async def upload_student_roster(
                 }
             )
         return entries
-
     def _validate_headers(headers: List[str]) -> None:
         normalized_headers = [header.strip() for header in headers]
         if normalized_headers != TEMPLATE_HEADERS:
             raise HTTPException(status_code=400, detail="Headers must be: " + ", ".join(TEMPLATE_HEADERS))
-
     is_csv_like = content_type in CSV_MIME_TYPES or filename.endswith(".csv")
     is_excel_like = content_type in EXCEL_MIME_TYPES or filename.endswith(".xlsx")
-
     if is_csv_like:
         text = _decode_csv_payload(raw_bytes)
         if "\x00" in text:
@@ -225,7 +216,6 @@ async def upload_student_roster(
             _validate_headers(reader.fieldnames)
             entries = _process_rows(reader)
             is_excel_like = False
-
     if is_excel_like:
         try:
             workbook = load_workbook(filename=io.BytesIO(raw_bytes), data_only=True)
@@ -234,7 +224,6 @@ async def upload_student_roster(
         sheet = workbook.active
         header_row = [str(cell.value).strip() if cell.value is not None else "" for cell in sheet[1]]
         _validate_headers(header_row)
-
         excel_rows = []
         for row in sheet.iter_rows(min_row=2, values_only=True):
             if all(cell in (None, "") for cell in row):
@@ -246,10 +235,8 @@ async def upload_student_roster(
         entries = _process_rows(excel_rows)
     elif not is_csv_like:
         raise HTTPException(status_code=400, detail="Only CSV or XLSX files are supported")
-
     if not entries:
         raise HTTPException(status_code=400, detail="No rows found in file")
-
     existing = roster_repo.fetch_existing_enrollments(
         admin_id,
         [entry["enrollment_number"] for entry in entries],
@@ -272,10 +259,9 @@ async def upload_student_roster(
                 continue
             filtered_entries.append(entry)
         entries = filtered_entries
-
     for entry in entries:
         entry.pop("row_number", None)
-
+        entry["assigned_member_id"] = current_user["id"]
     if entries:
         roster_repo.insert_roster_entries(admin_id, entries)
         portal_repo.bulk_upsert_student_accounts(
@@ -287,9 +273,7 @@ async def upload_student_roster(
                 for entry in entries
             ]
         )
-
     duplicate_report = _build_duplicate_report(duplicate_rows) if duplicate_rows else None
-
     if entries and duplicate_rows:
         message = "Uploaded with partial success. Some entries were duplicates."
     elif entries:
@@ -298,7 +282,6 @@ async def upload_student_roster(
         message = "No new students added because all records were duplicates."
     else:
         message = "No data processed."
-
     response_data: Dict[str, Any] = {
         "records_added": len(entries),
         "students": entries,
@@ -307,9 +290,7 @@ async def upload_student_roster(
     }
     if duplicate_report:
         response_data["duplicate_report"] = duplicate_report
-
     return ResponseBase(status=bool(entries), message=message, data=response_data)
-
 
 @router.get("/roster", response_model=ResponseBase)
 async def list_student_roster(current_user: dict = Depends(member_required(WorkType.STUDENT))) -> ResponseBase:
