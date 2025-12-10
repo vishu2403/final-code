@@ -376,10 +376,9 @@ def get_member_dashboard(*, member_id: int, admin_id: int, work_type: str) -> Di
                 "total_students": total_students,
                 "total_lectures": total_lectures,
                 "recent_student_activity": recent_student_activity,
-            }
-        },
-
-        "chapter_overview": chapter_overview
+            },
+            "chapter_overview": chapter_overview
+        }
 
     elif work_type == "student":
         total_chapters = dashboard_repository.count_members(admin_id, work_type="chapter", active_only=True)
