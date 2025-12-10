@@ -146,38 +146,31 @@ def create_chapter_material(
     
     return result if result else {}
 
-
-def update_chapter_material_overrides(
+def update_chapter_material_cover_photo(
     material_id: int,
     *,
-    chapter_title_override: Optional[str] = None,
-    topic_title_override: Optional[str] = None,
-    video_duration_minutes: Optional[int] = None,
-    video_resolution: Optional[str] = None,
+    cover_photo_url: Optional[str],
+    cover_photo_s3_key: Optional[str],
 ) -> Dict[str, Any]:
-    updates = {}
-    if chapter_title_override is not None:
-        updates["chapter_title_override"] = chapter_title_override.strip() or None
-    if topic_title_override is not None:
-        updates["topic_title_override"] = topic_title_override.strip() or None
-    if video_duration_minutes is not None:
-        updates["video_duration_minutes"] = max(video_duration_minutes, 0)
-    if video_resolution is not None:
-        updates["video_resolution"] = video_resolution.strip() or None
-
-    if not updates:
-        return {}
-
-    set_clause = ", ".join([f"{k} = %({k})s" for k in updates.keys()])
-    query = f"UPDATE chapter_materials SET {set_clause} WHERE id = %(id)s RETURNING *"
-    updates["id"] = material_id
-
+    query = """
+        UPDATE chapter_materials
+        SET cover_photo_url = %(cover_photo_url)s,
+            cover_photo_s3_key = %(cover_photo_s3_key)s,
+            updated_at = NOW()
+        WHERE id = %(id)s
+        RETURNING *
+    """
     with get_pg_cursor() as cur:
-        cur.execute(query, updates)
+        cur.execute(
+            query,
+            {
+                "id": material_id,
+                "cover_photo_url": cover_photo_url,
+                "cover_photo_s3_key": cover_photo_s3_key,
+            },
+        )
         result = cur.fetchone()
-    
     return result if result else {}
-
 
 def get_chapter_material(material_id: int) -> Optional[Dict[str, Any]]:
     query = "SELECT * FROM chapter_materials WHERE id = %(id)s"
@@ -348,7 +341,7 @@ def list_chapters_for_selection(
     subject: str,
 ) -> List[str]:
     query = """
-        SELECT chapter_title_override, chapter_title, chapter_number
+        SELECT chapter_title, chapter_number
         FROM chapter_materials
         WHERE admin_id = %(admin_id)s
         AND LOWER(std) = %(std)s
@@ -363,9 +356,9 @@ def list_chapters_for_selection(
         rows = cur.fetchall()
 
     title_candidates = {
-        (row.get("chapter_title_override") or row.get("chapter_title") or "").strip()
+        (row.get("chapter_title") or "").strip()
         for row in rows
-        if (row.get("chapter_title_override") or row.get("chapter_title"))
+        if row.get("chapter_title")
     }
     if title_candidates:
         return sorted(title_candidates, key=lambda value: value.lower())
@@ -594,10 +587,6 @@ def get_chapter_overview_data(admin_id: int) -> List[Dict[str, Any]]:
             cm.board,
             cm.chapter_title,
             cm.chapter_number,
-            cm.chapter_title_override,
-            cm.topic_title_override,
-            cm.video_duration_minutes,
-            cm.video_resolution,
             cm.admin_id,
             cm.created_at AS material_created_at,
             cm.updated_at AS material_updated_at,
@@ -663,8 +652,7 @@ def get_chapter_overview_data(admin_id: int) -> List[Dict[str, Any]]:
                 topics_data = []
 
             chapter_title = (
-                row["chapter_title_override"]
-                or extracted_chapter_title
+                extracted_chapter_title
                 or row["chapter_title"]
                 or row["chapter_number"]
             )
@@ -679,10 +667,6 @@ def get_chapter_overview_data(admin_id: int) -> List[Dict[str, Any]]:
                 "topics": topics_data,
                 "size": "41.1 KB",
                 "video": None,
-                "chapter_title_override": row["chapter_title_override"],
-                "topic_title_override": row["topic_title_override"],
-                "video_duration_minutes": row["video_duration_minutes"],
-                "video_resolution": row["video_resolution"],
                 "generated_lectures": [],
                 "_latest_lecture_ts": None,
                 "_latest_lecture_size": 0,

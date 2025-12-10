@@ -53,6 +53,19 @@ async def get_admin_portal_dashboard(
 
     return ResponseBase(status=True, message="Dashboard data retrieved successfully", data=data)
 
+
+@router.get("/student-management/dashboard", response_model=ResponseBase)
+async def get_student_management_dashboard(
+    current_user: dict = Depends(admin_required),
+) -> ResponseBase:
+    admin_id = _resolve_admin_id(current_user)
+    summary = dashboard_service.get_student_management_dashboard(admin_id)
+    return ResponseBase(
+        status=True,
+        message="Student management dashboard data retrieved",
+        data=summary,
+    )
+    
 @router.get("/profile", response_model=ResponseBase)
 
 async def get_admin_profile(

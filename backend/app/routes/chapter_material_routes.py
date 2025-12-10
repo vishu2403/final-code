@@ -31,7 +31,6 @@ from app.schemas.chapter_material_schema import (
     CreateMergedLectureRequest,
     TopicSelection,
     ResponseBase,
-    ChapterMaterialEditRequest,
 )
 from app.repository import auth_repository, registration_repository,lecture_credit_repository
 from app.repository.chapter_material_repository import (
@@ -60,7 +59,6 @@ from app.repository.chapter_material_repository import (
     list_chapters_for_selection,
     list_subjects_for_std,
     list_standards_for_admin,
-    update_chapter_material_overrides,
 )
 from app.plan_limits import PLAN_CREDIT_LIMITS
 from app.utils.file_handler import (
@@ -829,7 +827,7 @@ def _fetch_filtered_lectures(
         chapter_clean = chapter.strip().lower()
         title_expr = func.lower(
             func.trim(
-                func.coalesce(ChapterMaterial.chapter_title_override, ChapterMaterial.chapter_title)
+                func.coalesce(ChapterMaterial.ChapterMaterial.chapter_title, "")
             )
         )
         number_expr = func.lower(func.trim(ChapterMaterial.chapter_number))
@@ -908,7 +906,6 @@ def _fetch_filtered_lectures(
 
         chapter_title = (
             _chapter_title_from_row
-            or material.chapter_title_override
             or extracted_chapter_title
             or material.chapter_title
             or material.chapter_number
@@ -951,11 +948,7 @@ def _fetch_filtered_lectures(
         resolved_lecture_id = str(lecture_uid or material.id)
         admin_id_value = material.admin_id
 
-        effective_duration = (
-            lecture_duration_minutes
-            or material.video_duration_minutes
-            or configured_default_duration
-        )
+        effective_duration = lecture_duration_minutes or configured_default_duration
 
         items.append(
             {
@@ -1296,46 +1289,48 @@ async def list_recent_chapter_materials_route(
 
 
 
-
-@router.patch("/{material_id}/edit")
-async def edit_chapter_material_metadata(
-    material_id: int,
-    payload: ChapterMaterialEditRequest,
+@router.post("/lectures/{lecture_uid}/cover-photo", response_model=ResponseBase)
+async def upload_lecture_cover_photo(
+    lecture_uid: str,
+    cover_photo: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     admin_id = _resolve_admin_id(current_user)
-    chapter_material = get_chapter_material(material_id)
-    if not chapter_material or (chapter_material.get("admin_id") if isinstance(chapter_material, dict) else chapter_material.admin_id) != admin_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Material not found")
-
-    update_kwargs = payload.model_dump(exclude_unset=True)
-    dashboard_chapter = update_kwargs.pop("chapter", None)
-    dashboard_topics = update_kwargs.pop("topics", None)
-
-    if "chapter_title_override" not in update_kwargs and dashboard_chapter is not None:
-        update_kwargs["chapter_title_override"] = dashboard_chapter
-
-    if "topic_title_override" not in update_kwargs and dashboard_topics is not None:
-        first_topic = None
-        if isinstance(dashboard_topics, list):
-            for topic_entry in dashboard_topics:
-                if isinstance(topic_entry, str) and topic_entry.strip():
-                    first_topic = topic_entry
-                    break
-        update_kwargs["topic_title_override"] = first_topic
-
-    updated = update_chapter_material_overrides(chapter_material.get("id") if isinstance(chapter_material, dict) else chapter_material.id, **update_kwargs)
-
-    return {
-        "status": True,
-        "message": "Chapter material metadata updated successfully",
-        "data": {
-            "material": updated if isinstance(updated, dict) else (updated.to_dict() if hasattr(updated, "to_dict") else updated.__dict__),
+    lecture: Optional[LectureGen] = (
+        db.query(LectureGen).filter(LectureGen.lecture_uid == lecture_uid).first()
+    )
+    if not lecture:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Lecture not found",
+        )
+    if lecture.admin_id != admin_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+        )
+    settings = get_settings()
+    s3_service = get_s3_service(settings)
+    upload_result = await upload_image_to_s3(
+        cover_photo,
+        s3_service=s3_service,
+        subfolder=f"lectures/{admin_id}/{lecture_uid}/cover-photos",
+    )
+    lecture.cover_photo_url = upload_result.get("s3_url")
+    lecture.updated_at = datetime.utcnow()
+    db.add(lecture)
+    db.commit()
+    db.refresh(lecture)
+    return ResponseBase(
+        status=True,
+        message="Lecture cover photo uploaded successfully",
+        data={
+            "lecture_uid": lecture_uid,
+            "cover_photo_url": lecture.cover_photo_url,
+            "material_id": lecture.material_id,
         },
-    }
-
-
+    )
 @router.delete("/{lecture_id}")
 async def delete_chapter_material_route(
     lecture_id: str,
@@ -1397,11 +1392,8 @@ async def extract_topics_from_materials(
 
     try:
         from app.utils.topic_extractor import extract_topics_from_pdf
-
         logger.info(f"Extracting topics for {len(material_ids)} materials by user {current_user.get('email')}")
-
         topics_by_material: List[Dict[str, Any]] = []
-
         for material_id in material_ids:
             entry: Dict[str, Any] = {
                 "material_id": material_id,
@@ -1475,7 +1467,16 @@ async def extract_topics_from_materials(
 
                     # Extract topics
                     extraction = extract_topics_from_pdf(Path(material_file_path))
-
+                    if not extraction.get("success", True):
+                        entry["error"] = extraction.get("error") or "No text could be extracted from the PDF."
+                        entry["error_type"] = extraction.get("error_type") or "NO_TEXT_EXTRACTED"
+                        topics_by_material.append(entry)
+                        logger.warning(
+                            "Topic extraction returned no content for material %s: %s",
+                            material_id,
+                            entry["error"],
+                        )
+                        continue
                     # Save to files
                     txt_path, json_path = save_extracted_topics_files(material_admin_id, material_id, extraction)
 
@@ -1517,13 +1518,34 @@ async def extract_topics_from_materials(
         # Calculate statistics
         successful_count = sum(1 for item in topics_by_material if item.get("topics"))
         failed_count = sum(1 for item in topics_by_material if item.get("error"))
-        
+        errors_payload = [
+            {
+                "material_id": item["material_id"],
+                "error": item.get("error"),
+                "error_type": item.get("error_type"),
+            }
+            for item in topics_by_material
+            if item.get("error")
+        ]
+        if successful_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "message": "Topic extraction failed for all provided materials.",
+                    "errors": errors_payload,
+                },
+            )
+        message = (
+            f"Topics extraction completed with {failed_count} error(s)"
+            if failed_count > 0
+            else "Topics extracted successfully"
+        )
         # Build appropriate message
-        if failed_count > 0:
-            message = f"Topics extraction completed with {failed_count} error(s)"
-        else:
-            message = "Topics extracted successfully"
-        
+        message = (
+            f"Topics extraction completed with {failed_count} error(s)"
+            if failed_count > 0
+            else "Topics extracted successfully"
+        )
         return {
             "status": True, 
             "message": message, 
@@ -1532,14 +1554,7 @@ async def extract_topics_from_materials(
                 "total_materials": len(material_ids),
                 "successful_extractions": successful_count,
                 "failed_extractions": failed_count,
-                "errors": [
-                    {
-                        "material_id": item["material_id"],
-                        "error": item.get("error"),
-                        "error_type": item.get("error_type")
-                    }
-                    for item in topics_by_material if item.get("error")
-                ]
+                "errors": errors_payload,
             }
         }
         

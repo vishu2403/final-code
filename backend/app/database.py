@@ -91,12 +91,7 @@ def _ensure_chapter_material_schema() -> None:
     columns = {col["name"]: col for col in inspector.get_columns("chapter_materials")}
     statements: list[str] = []
 
-    optional_columns = {
-        "chapter_title_override": "ALTER TABLE chapter_materials ADD COLUMN chapter_title_override VARCHAR(255)",
-        "topic_title_override": "ALTER TABLE chapter_materials ADD COLUMN topic_title_override VARCHAR(255)",
-        "video_duration_minutes": "ALTER TABLE chapter_materials ADD COLUMN video_duration_minutes INTEGER",
-        "video_resolution": "ALTER TABLE chapter_materials ADD COLUMN video_resolution VARCHAR(32)",
-    }
+    optional_columns = {}
 
     for column_name, ddl in optional_columns.items():
         if column_name not in columns:
@@ -340,6 +335,7 @@ def init_db() -> None:
         return
     try:
         _ensure_chapter_material_schema()
+        _ensure_lecture_gen_core_columns()
         _ensure_lecture_gen_timestamps()
         _ensure_administrator_timestamps()
     except Exception:  # pragma: no cover - defensive guardrail

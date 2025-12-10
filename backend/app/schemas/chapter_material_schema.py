@@ -197,65 +197,6 @@ class AssistantAddTopicsRequest(BaseModel):
         }
 
 
-class ChapterMaterialEditRequest(BaseModel):
-    video_duration_minutes: Optional[int] = Field(
-        default=None,
-        ge=1,
-        le=600,
-        description="Duration of associated video in minutes",
-    )
-    video_resolution: Optional[str] = Field(
-        default=None,
-        max_length=32,
-        description="Video resolution label (e.g., 1080p)",
-    )
-    chapter_title_override: Optional[str] = Field(
-        default=None,
-        max_length=255,
-        description="Custom chapter title shown on dashboard",
-    )
-    topic_title_override: Optional[str] = Field(
-        default=None,
-        max_length=255,
-        description="Custom topic name shown on dashboard",
-    )
-    chapter: Optional[str] = Field(
-        default=None,
-        max_length=255,
-        description="Dashboard chapter title to map into chapter_title_override",
-    )
-    topics: Optional[List[str]] = Field(
-        default=None,
-        description="Dashboard topics array; first non-empty entry maps into topic_title_override",
-    )
-
-    @model_validator(mode="after")
-    def ensure_at_least_one(cls, values: "ChapterMaterialEditRequest") -> "ChapterMaterialEditRequest":
-        if not any(
-            values.__dict__.get(field) not in (None, "")
-            for field in (
-                "video_duration_minutes",
-                "video_resolution",
-                "chapter_title_override",
-                "topic_title_override",
-                "chapter",
-                "topics",
-            )
-        ):
-            raise ValueError("Provide at least one field to update")
-        return values
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "video_duration_minutes": 35,
-                "video_resolution": "1080p",
-                "chapter": "Quadratic Equations",
-                "topics": ["Roots & Graphs", "Factoring"],
-            }
-        }
-
-
 class ChapterMaterialCreate(BaseModel):
     """Schema for creating a chapter material"""
     std: str
