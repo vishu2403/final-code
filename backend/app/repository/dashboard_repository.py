@@ -55,6 +55,25 @@ _MEMBER_COLUMNS = [
 ]
 
 
+def _column_exists(table: str, column: str) -> bool:
+
+    query = (
+
+        "SELECT 1 FROM information_schema.columns "
+
+        "WHERE table_schema = 'public' AND table_name = %(table)s AND column_name = %(column)s "
+
+        "LIMIT 1"
+
+    )
+
+
+
+    with get_pg_cursor() as cur:
+
+        cur.execute(query, {"table": table, "column": column})
+
+        return cur.fetchone() is not None
 def _row_to_dict(row: Optional[Dict[str, Any]], columns: list[str]) -> Optional[Dict[str, Any]]:
     if row is None:
         return None
@@ -151,7 +170,7 @@ def get_member_lecture_metrics(admin_id: int, member_id: int) -> Dict[str, int]:
         "pending_lectures": pending,
         "qa_sessions": qa_sessions,
     }
-    
+
 def fetch_package(name: str) -> Optional[Dict[str, Any]]:
     query = (
         f"SELECT {', '.join(_PACKAGE_COLUMNS)} FROM packages "
