@@ -126,7 +126,7 @@ def login(credentials: LoginRequest) -> LoginResponse:
         message = (
             f"Welcome {admin['full_name']}"
             if login_status == "first_time"
-            else f"🎉 You have already logged in — Welcome back {admin['full_name']}"
+            else f"🎉 Welcome back {admin['full_name']}"
         )
 
         return LoginResponse(
@@ -169,7 +169,7 @@ def login(credentials: LoginRequest) -> LoginResponse:
         message = (
             f"Welcome {member['name']}!"
             if is_first_login
-            else f"🎉 You have already logged in — Welcome back {member['name']}"
+            else f"🎉 Welcome back {member['name']}"
         )
         login_status = "first_time" if is_first_login else "already_logged_in"
         valid_tokens[f"admin_{member['admin_id']}"] = session_id

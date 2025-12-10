@@ -266,161 +266,83 @@ def get_admin_dashboard(admin_id: int) -> Dict[str, object]:
     }
 
 def get_admin_lecture_dashboard(admin_id: int) -> Dict[str, object]:
-
     """Return lecture team overview for the admin."""
-
-
 
     metrics = _collect_admin_lecture_metrics(admin_id)
 
-
- 
     lecture_members = member_repository.list_members(
-
         admin_id,
-
         work_type=WorkType.LECTURE.value,
-
         active_only=False,
-
     )
 
-
-
     members_payload: List[Dict[str, Any]] = []
-
     assigned_totals = {
-
         "total_lectures": 0,
-
         "played_lectures": 0,
-
         "shared_lectures": 0,
-
         "pending_lectures": 0,
-
         "qa_sessions": 0,
-
     }
 
-
-
     for member in lecture_members:
-
         member_id = member.get("member_id")
-
         if member_id is None:
-
             continue
-
-
 
         counts = dashboard_repository.get_member_lecture_metrics(admin_id, member_id)
 
-
-
         assigned_totals["total_lectures"] += counts["total_lectures"]
-
         assigned_totals["played_lectures"] += counts["played_lectures"]
-
         assigned_totals["shared_lectures"] += counts["shared_lectures"]
-
         assigned_totals["pending_lectures"] += counts["pending_lectures"]
-
         assigned_totals["qa_sessions"] += counts["qa_sessions"]
 
-
-
         members_payload.append(
-
             {
-
                 "member_id": member_id,
-
                 "name": member.get("name"),
-
                 "email": member.get("email"),
-
                 "designation": member.get("designation"),
-
                 "active": bool(member.get("active", True)),
-
                 "total_lectures": counts["total_lectures"],
-
                 "played_lectures": counts["played_lectures"],
-
                 "shared_lectures": counts["shared_lectures"],
-
                 "qa_sessions": counts["qa_sessions"],
-
                 "last_login": member.get("last_login"),
-
             }
-
         )
 
-
-
     unassigned_counts = {
-
         "total_lectures": max(metrics.get("total_lectures", 0) - assigned_totals["total_lectures"], 0),
-
         "played_lectures": max(metrics.get("played_lectures", 0) - assigned_totals["played_lectures"], 0),
-
         "shared_lectures": max(metrics.get("shared_lectures", 0) - assigned_totals["shared_lectures"], 0),
-
         "pending_lectures": max(metrics.get("pending_lectures", 0) - assigned_totals["pending_lectures"], 0),
-
         "qa_sessions": max(metrics.get("qa_sessions", 0) - assigned_totals["qa_sessions"], 0),
-
     }
-
-
 
     totals = {
-
         "total_lectures": metrics.get("total_lectures", 0),
-
         "played_lectures": metrics.get("played_lectures", 0),
-
         "shared_lectures": metrics.get("shared_lectures", 0),
-
         "qa_sessions": metrics.get("qa_sessions", 0),
-
         "pending_lectures": metrics.get("pending_lectures", 0),
-
     }
 
-
-
     return {
-
         "admin_id": admin_id,
-
         "generated_at": _aware_now().isoformat(),
-
         "team_size": len(members_payload),
-
         "totals": totals,
-
         "members": members_payload,
-
         "unassigned": {
-
             "label": "unassigned",
-
             "total_lectures": unassigned_counts.get("total_lectures", 0),
-
             "played_lectures": unassigned_counts.get("played_lectures", 0),
-
             "shared_lectures": unassigned_counts.get("shared_lectures", 0),
-
             "qa_sessions": 0,
-
             "pending_lectures": unassigned_counts.get("pending_lectures", 0),
-
         },
-
     }
 
 def get_member_dashboard(*, member_id: int, admin_id: int, work_type: str) -> Dict[str, object]:
