@@ -161,3 +161,21 @@ def member_required(required_work_type: Optional[WorkType] = None) -> Callable[[
         return current_user
 
     return _member_required
+
+
+def admin_or_chapter_member(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    """Allow admin or chapter members."""
+    if current_user["role"] == "admin":
+        return current_user
+    if current_user["role"] == "member" and current_user.get("work_type") == "chapter":
+        return current_user
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin or chapter member access required")
+
+
+def admin_or_lecture_member(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    """Allow admin or lecture members."""
+    if current_user["role"] == "admin":
+        return current_user
+    if current_user["role"] == "member" and current_user.get("work_type") == "lecture":
+        return current_user
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin or lecture member access required")

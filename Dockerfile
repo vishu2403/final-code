@@ -52,4 +52,4 @@ RUN apt-get update && \
 # Copy the backend code
 COPY backend ./backend
 EXPOSE 8000
-CMD ["gunicorn","app.main:app","-k", "uvicorn.workers.UvicornWorker","--workers", "3","--timeout", "600","--bind", "0.0.0.0:8000","--access-logfile", "-","--error-logfile", "-"]
+CMD ["gunicorn","app.main:app","-k", "uvicorn.workers.UvicornWorker","--workers", "2","--timeout", "600","--bind", "0.0.0.0:8000","--access-logfile", "-","--error-logfile", "-"]
