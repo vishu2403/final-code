@@ -367,14 +367,17 @@ def _build_lecture_config_response(
         or settings.dict().get("default_lecture_duration")
         or DURATION_OPTIONS[0]
     )
-    selected_duration = configured_default_duration
-    if requested_duration and requested_duration in DURATION_OPTIONS:
-        selected_duration = requested_duration
+    selected_duration = (
+        requested_duration
+        if requested_duration is not None
+        else configured_default_duration
+    )
 
     return {
         "selected_duration": selected_duration,
         "selected_language": language_value,
         "selected_language_label": language_label,
+        "video_duration_minutes": selected_duration,
     }
 
 

@@ -160,10 +160,14 @@ class LectureService:
         metadata_changed = False
 
         for index, slide in enumerate(slides, start=1):
-            tts_text = self._compose_slide_tts_text(slide)
-            if not tts_text:
+            tts_text = self._compose_slide_tts_text(slide, language=language)
+            # Skip audio generation if no content available
+            if not tts_text or len(tts_text.strip()) < 10:
+                logger.warning(
+                    "Slide %d has insufficient content for TTS, skipping audio generation",
+                    slide.get('number', index)
+                )
                 continue
-
             filename = f"slide-{slide.get('number') or index}.mp3"
             existing_file = self._audio_storage_root / lecture_id / "audio" / filename
 
@@ -189,6 +193,7 @@ class LectureService:
             )
 
             if not audio_path:
+                logger.error("Failed to generate audio for slide %d", slide.get('number', index))
                 continue
 
             logger.info("Slide audio generated: %s", slide["audio_url"])
@@ -227,26 +232,43 @@ class LectureService:
         return sanitized
 
     def _compose_slide_tts_text(self, slide: Dict[str, Any], *, language: str = "English") -> str:
-            """Build a narration string that includes title, bullets, narration, and questions."""
-            if not isinstance(slide, dict):
-                return ""
-            sections: List[str] = []
-            bullets = [
-                (bullet or "").strip()
-                for bullet in slide.get("bullets") or []
-                if (bullet or "").strip()
-            ]
-            if bullets:
-                sections.append(self._format_bullet_summary(bullets, language=language))
-            narration = (slide.get("narration") or "").strip()
-            if narration:
-                sections.append(narration)
-            question = (slide.get("question") or "").strip()
-            if question:
-                sections.append(question)
-            return " ".join(sections)
+        """Build a narration string that includes title, bullets, narration, and questions."""
+        if not isinstance(slide, dict):
+            return ""
+        sections: List[str] = []
+        # Add title as introduction
+        title = (slide.get("title") or "").strip()
+        if title:
+            sections.append(title)
+        bullets = [
+            (bullet or "").strip()
+            for bullet in slide.get("bullets") or []
+            if (bullet or "").strip()
+        ]
+        if bullets:
+            sections.append(self._format_bullet_summary(bullets, language=language))
+        narration = (slide.get("narration") or "").strip()
+        if narration:
+            sections.append(narration)
+        question = (slide.get("question") or "").strip()
+        if question:
+            # Add a prefix for questions
+            question_intro = self._get_question_intro(language)
+            sections.append(f"{question_intro} {question}")
+        return " ".join(sections)
+
+    def _get_question_intro(self, language: str) -> str:
+        """Get localized question introduction."""
+        intros = {
+            "Hindi": "अब कुछ सवाल:",
+            "Gujarati": "હવે કેટલાક પ્રશ્નો:",
+            "English": "Now, some questions:"
+        }
+        return intros.get(language, intros["English"])
     def _format_bullet_summary(self, bullets: List[str], *, language: str = "English") -> str:
             """Create a natural sentence summarizing slide bullets, localized to the lecture language."""
+            if not bullets:
+                return ""
             topic_list = self._human_join(bullets).rstrip(". ")
             language = (language or "English").strip()
             templates = {

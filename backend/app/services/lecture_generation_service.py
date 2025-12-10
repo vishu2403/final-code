@@ -67,81 +67,107 @@ def detect_math_content(text: str) -> bool:
 # ============================================================================
 
 def create_lecture_prompt(*, text: str, language: str, duration: int, style: str) -> str:
-    """Build optimized prompt for lecture generation with strict JSON structure."""
-    
+    """Build optimized prompt for lecture generation with strict JSON structure and improved engagement."""
+
     language_instructions = {
         "Gujarati": (
             "LANGUAGE RULES:\n"
-            "1. Keep ONLY pure technical/domain terms in English (e.g., algorithm, database, function, API).\n"
-            "2. Write all other words in Gujarati – connecting words, verbs, adjectives, descriptions.\n"
-            "3. Use everyday conversational language. Avoid formal English words like 'critical', 'important'.\n"
-            "4. Include easy English words naturally throughout the lecture.\n"
-            "5. Example: 'Algorithm એક પદ્ધતિ છે જે આપણને સમસ્યા હલ કરવામાં મદદ કરે છે'\n"
-            "6. Keep English around 20-30% of content; rest should be Gujarati.\n"
-            "7. Speak like a teacher talks in class – natural, friendly, and simple."
+            "1. Keep ONLY technical words in English (algorithm, database, API, function).\n"
+            "2. Write all other narration in simple Gujarati.\n"
+            "3. Use friendly, conversational Gujarati—like a real classroom teacher.\n"
+            "4. Add easy English words naturally.\n"
+            "5. Keep English 20–30% only.\n"
+            "6. Avoid formal English words; keep it natural.\n"
+            "7. Example: 'Algorithm એક simple રીત છે જેને આપણે સમસ્યા solve કરવા use કરીએ છીએ.'"
         ),
         "Hindi": (
             "LANGUAGE RULES:\n"
-            "1. Keep ONLY pure technical/domain terms in English (e.g., algorithm, database, function, API).\n"
-            "2. Write all other words in Hindi – connecting words, verbs, adjectives, descriptions.\n"
-            "3. Use everyday conversational language. Avoid formal English words.\n"
-            "4. Include easy English words naturally throughout the lecture.\n"
-            "5. Example: 'Algorithm एक तरीका है जो हमें समस्या हल करने में मदद करता है'\n"
-            "6. Keep English around 20-30% of content; rest should be Hindi.\n"
-            "7. Speak like a teacher talks in class – natural, friendly, and simple."
+            "1. Keep ONLY technical/domain terms in English.\n"
+            "2. All explanations in simple Hindi.\n"
+            "3. Use everyday, easy-to-understand language.\n"
+            "4. Mix easy English words naturally.\n"
+            "5. Keep English 20–30%.\n"
+            "6. Avoid textbook-style language.\n"
+            "7. Example: 'Algorithm एक तरीका है जिससे हम problem को आसानी से solve कर पाते हैं.'"
         ),
         "English": (
-            "Generate all content in clear, student-friendly English.\n"
-            "Use simple, conversational language."
+            "Write in simple, student-friendly, conversational English.\n"
+            "Avoid formal or academic tone."
         )
     }
-    
+
     lang_instruction = language_instructions.get(
         language,
         f"Generate content in {language} with natural mixing of terminology."
     )
-    
-    prompt = f"""
-Create a {duration}-minute educational lecture from the provided source material.
 
-CRITICAL: The source material may contain text in Hindi, Gujarati, or English script.
-Read and understand the EXACT content. The lecture topic MUST match the source material.
+    prompt = f"""
+Create a {duration}-minute highly engaging, story-driven educational lecture based on the provided source material.
+
+IMPORTANT:
+- Source content may be Gujarati, Hindi, or English.
+- Understand the EXACT meaning before generating.
+- Topic MUST match the source.
 
 {lang_instruction}
 
-REQUIRED JSON OUTPUT STRUCTURE:
+TEACHING STYLE (VERY IMPORTANT):
+- Speak like a friendly, energetic classroom teacher.
+- Use stories, analogies, everyday examples.
+- Add light humor where appropriate.
+- Ask small reflective questions to keep students alert.
+- Explain concepts using "imagine", "think of it like…", "have you ever noticed…?"
+- Avoid boring textbook tone.
+- Requested style: {style}. Adapt tone accordingly (fun, exam-focused, storytelling, motivational).
+
+REQUIRED JSON OUTPUT:
 {{
-  "slides": [/* Array of exactly 9 slide objects */],
+  "slides": [ /* 9 slides */ ],
   "estimated_duration": {duration}
 }}
 
-MANDATORY SLIDE STRUCTURE (MUST HAVE ALL 9):
+====================================================
+🚀 MANDATORY SLIDE STRUCTURE (9 SLIDES)
+====================================================
 
 === SLIDE 1: INTRODUCTION ===
 {{
   "title": "Introduction to [Topic]",
   "bullets": [],
-  "narration": "Welcome students! Today we'll explore... [250+ words]",
+  "narration": "Start with a fun hook or story. Then explain why this topic matters in real life. Use 250+ words with an energetic, friendly tone.",
   "question": ""
 }}
 
-=== SLIDE 2-3: KEY CONCEPTS ===
+=== SLIDE 2: KEY POINTS ===
 {{
-  "title": "Key Concepts - Part 1/2",
-  "bullets": ["Concept 1", "Concept 2", "Concept 3"],
-  "narration": "",
-  "question": ""
+  "title": "Key Points You Must Know",
+  "bullets": ["Key Point 1", "Key Point 2", "Key Point 3"],
+  "narration": "Explain these points in simple language with at least one small example or analogy.",
+  "question": "Ask one short reflective question based on these key points."
 }}
 
-=== SLIDES 4-7: DEEP TEACHING WITH EXAMPLES ===
-Pattern: Explain concept (2-3 paragraphs) → Real example (1-2 paragraphs) → Another concept → Another example
-Total: 600-1000 words per slide with teaching + examples mixed naturally
+=== SLIDE 3: INTERESTING INSIGHTS & FUN UNDERSTANDING ===
+{{
+  "title": "Interesting Insights — Making the Topic Come Alive",
+  "bullets": [],
+  "narration": "Turn this slide into a fun, engaging section. Use mini stories, surprising facts, or relatable daily-life situations. Make students say: 'Ohhh, now I get it!' Include at least two fun mini-stories or observations.",
+  "question": "Ask one curiosity-driven question that makes students think deeper."
+}}
+
+=== SLIDES 4–7: DEEP TEACHING WITH EXAMPLES ===
+Pattern for each slide:
+- Concept explanation (2–3 paragraphs)
+- Real-life example (1–2 paragraphs)
+- Another concept explanation
+- Another relatable example
+Word count: 600–1000 words per slide  
+Tone: Interactive, story-rich, classroom-like.
 
 === SLIDE 8: PRACTICAL APPLICATIONS ===
 {{
   "title": "How to Apply This Knowledge",
   "bullets": [],
-  "narration": "Practical applications, career uses, daily life usage [280+ words]",
+  "narration": "Show real-world uses, career value, and daily life applications. Motivate students. (280+ words)",
   "question": ""
 }}
 
@@ -149,7 +175,7 @@ Total: 600-1000 words per slide with teaching + examples mixed naturally
 {{
   "title": "Quiz Time - Test Your Understanding",
   "bullets": [],
-  "narration": "",
+  "narration": "Give a friendly recap in 3–5 sentences, encouraging revision.",
   "question": "1. Question 1?\\n2. Question 2?\\n3. Question 3?\\n4. Question 4?\\n5. Question 5?"
 }}
 
