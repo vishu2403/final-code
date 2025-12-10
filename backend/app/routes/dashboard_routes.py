@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..schemas import ResponseBase, WorkType
 from ..services import dashboard_service
-from ..utils.dependencies import member_required, onboarding_completed_required
+from ..utils.dependencies import member_required, admin_required
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -49,7 +49,7 @@ async def get_lecture_dashboard(current_user: dict = Depends(member_required(Wor
     return ResponseBase(status=True, message="Lecture dashboard data retrieved", data=data)
 
 @router.get("/admin/lectures", response_model=ResponseBase)
-async def get_admin_lecture_dashboard(current_user: dict = Depends(onboarding_completed_required)):
+async def get_admin_lecture_dashboard(current_user: dict = Depends(admin_required)):
     data = dashboard_service.get_admin_lecture_dashboard(current_user["id"])
     return ResponseBase(status=True, message="Admin lecture dashboard data retrieved", data=data)
 
