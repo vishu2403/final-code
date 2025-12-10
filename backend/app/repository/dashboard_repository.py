@@ -138,23 +138,36 @@ def fetch_admin(admin_id: int) -> Optional[Dict[str, Any]]:
 
 
 def get_member_lecture_metrics(admin_id: int, member_id: int) -> Dict[str, int]:
+    if not _column_exists("lecture_gen", "assigned_member_id"):
+        return {
+            "total_lectures": 0,
+            "played_lectures": 0,
+            "shared_lectures": 0,
+            "pending_lectures": 0,
+            "qa_sessions": 0,
+        }
+
     query = (
         "SELECT COUNT(*) AS total_lectures, "
         "       COUNT(*) FILTER ("
-        "           WHERE CAST(COALESCE(lecture_gen.lecture_data->>'play_count', '0') AS INTEGER) > 0"
+        "           WHERE CAST(COALESCE(lecture_data->>'play_count', '0') AS INTEGER) > 0"
         "       ) AS played_lectures, "
-        "       COUNT(*) FILTER (WHERE lecture_gen.lecture_shared = TRUE) AS shared_lectures "
+        "       COUNT(*) FILTER (WHERE lecture_shared = TRUE) AS shared_lectures "
         "FROM lecture_gen "
-        "WHERE lecture_gen.admin_id = %(admin_id)s "
-        "  AND EXISTS ("
-        "      SELECT 1 FROM student_roster_entries roster "
-        "      WHERE roster.assigned_member_id = %(member_id)s "
-        "        AND roster.lecture_uid = lecture_gen.lecture_uid"
-        "  )"
+        "WHERE admin_id = %(admin_id)s AND assigned_member_id = %(member_id)s"
     )
 
     with get_pg_cursor() as cur:
-        cur.execute(query, {"admin_id": admin_id, "member_id": member_id})
+        try:
+            cur.execute(query, {"admin_id": admin_id, "member_id": member_id})
+        except (UndefinedColumn, UndefinedTable):
+            return {
+                "total_lectures": 0,
+                "played_lectures": 0,
+                "shared_lectures": 0,
+                "pending_lectures": 0,
+                "qa_sessions": 0,
+            }
         row = cur.fetchone() or {}
 
     total = int(row.get("total_lectures") or 0)
@@ -170,6 +183,7 @@ def get_member_lecture_metrics(admin_id: int, member_id: int) -> Dict[str, int]:
         "pending_lectures": pending,
         "qa_sessions": qa_sessions,
     }
+
 
 def fetch_package(name: str) -> Optional[Dict[str, Any]]:
     query = (
@@ -286,6 +300,77 @@ def count_played_lectures(admin_id: int) -> int:
         cur.execute(query, {"admin_id": admin_id})
         (count,) = cur.fetchone()
     return int(count)
+
+
+def count_shared_lectures(admin_id: int) -> int:
+    query = (
+        "SELECT COUNT(*) FROM lecture_gen "
+        "WHERE admin_id = %(admin_id)s AND lecture_shared = TRUE"
+    )
+    with get_pg_cursor(dict_rows=False) as cur:
+        cur.execute(query, {"admin_id": admin_id})
+        (count,) = cur.fetchone()
+    return int(count)
+
+
+def count_pending_lectures(admin_id: int) -> int:
+    query = (
+        "SELECT COUNT(*) FROM lecture_gen "
+        "WHERE admin_id = %(admin_id)s "
+        "AND COALESCE((lecture_data->>'status'), 'pending') = 'pending'"
+    )
+    with get_pg_cursor(dict_rows=False) as cur:
+        cur.execute(query, {"admin_id": admin_id})
+        (count,) = cur.fetchone()
+    return int(count)
+
+
+def get_qa_session_count(admin_id: int) -> int:
+    query = (
+        "SELECT COUNT(*) FROM lecture_qa_sessions "
+        "WHERE admin_id = %(admin_id)s"
+    )
+    with get_pg_cursor(dict_rows=False) as cur:
+        try:
+            cur.execute(query, {"admin_id": admin_id})
+            (count,) = cur.fetchone()
+        except (UndefinedTable, UndefinedColumn):
+            return 0
+    return int(count)
+
+
+def get_member_qa_session_count(admin_id: int, member_id: int) -> int:
+    if not _column_exists("lecture_qa_sessions", "assigned_member_id"):
+        return 0
+
+    query = (
+        "SELECT COUNT(*) FROM lecture_qa_sessions "
+        "WHERE admin_id = %(admin_id)s AND assigned_member_id = %(member_id)s"
+    )
+    with get_pg_cursor(dict_rows=False) as cur:
+        try:
+            cur.execute(query, {"admin_id": admin_id, "member_id": member_id})
+            (count,) = cur.fetchone()
+        except (UndefinedTable, UndefinedColumn):
+            return 0
+    return int(count)
+
+
+def get_admin_lecture_metrics(admin_id: int) -> Dict[str, int]:
+    total = count_total_lectures(admin_id)
+    played = count_played_lectures(admin_id)
+    shared = count_shared_lectures(admin_id)
+    pending = max(total - played, 0)
+
+    qa_sessions = get_qa_session_count(admin_id)
+
+    return {
+        "total_lectures": total,
+        "played_lectures": played,
+        "shared_lectures": shared,
+        "pending_lectures": pending,
+        "qa_sessions": qa_sessions,
+    }
 
 
 def dashboard_summary(admin_id: int) -> Dict[str, Any]:

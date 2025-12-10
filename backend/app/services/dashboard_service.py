@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Optional
-
+from typing import Dict, List, Optional, Any
 from ..repository import (
     dashboard_repository,
     lecture_credit_repository,
     student_management_repository as roster_repository,
+    member_repository,
 )
-from ..schemas import AdminResponse, MemberResponse, PackageResponse
+from ..schemas import AdminResponse, MemberResponse, PackageResponse, WorkType
 from ..plan_limits import PLAN_CREDIT_LIMITS
 
 
@@ -72,16 +72,8 @@ def _compute_expiry(admin: dict, package: Optional[dict]) -> Optional[datetime]:
 # NEW: Accurate Lecture Metrics (from Code-2)
 # -----------------------------------------------------------
 def _collect_admin_lecture_metrics(admin_id: int) -> Dict[str, int]:
-    """Collect lecture statistics from chapter_materials for the admin."""
-    # Return default metrics - lecture statistics can be computed from chapter_materials table
-    # This is a placeholder that returns empty metrics
-    return {
-        "total_lectures": 0,
-        "played_lectures": 0,
-        "pending_lectures": 0,
-        "shared_lectures": 0,
-        "qa_sessions": 0,
-    }
+    """Collect lecture statistics for the admin."""
+    return dashboard_repository.get_admin_lecture_metrics(admin_id)
 
 
 def get_admin_dashboard_from_object(admin: dict) -> Dict[str, object]:
@@ -273,6 +265,163 @@ def get_admin_dashboard(admin_id: int) -> Dict[str, object]:
         "package_usage": package_usage,
     }
 
+def get_admin_lecture_dashboard(admin_id: int) -> Dict[str, object]:
+
+    """Return lecture team overview for the admin."""
+
+
+
+    metrics = _collect_admin_lecture_metrics(admin_id)
+
+
+ 
+    lecture_members = member_repository.list_members(
+
+        admin_id,
+
+        work_type=WorkType.LECTURE.value,
+
+        active_only=False,
+
+    )
+
+
+
+    members_payload: List[Dict[str, Any]] = []
+
+    assigned_totals = {
+
+        "total_lectures": 0,
+
+        "played_lectures": 0,
+
+        "shared_lectures": 0,
+
+        "pending_lectures": 0,
+
+        "qa_sessions": 0,
+
+    }
+
+
+
+    for member in lecture_members:
+
+        member_id = member.get("member_id")
+
+        if member_id is None:
+
+            continue
+
+
+
+        counts = dashboard_repository.get_member_lecture_metrics(admin_id, member_id)
+
+
+
+        assigned_totals["total_lectures"] += counts["total_lectures"]
+
+        assigned_totals["played_lectures"] += counts["played_lectures"]
+
+        assigned_totals["shared_lectures"] += counts["shared_lectures"]
+
+        assigned_totals["pending_lectures"] += counts["pending_lectures"]
+
+        assigned_totals["qa_sessions"] += counts["qa_sessions"]
+
+
+
+        members_payload.append(
+
+            {
+
+                "member_id": member_id,
+
+                "name": member.get("name"),
+
+                "email": member.get("email"),
+
+                "designation": member.get("designation"),
+
+                "active": bool(member.get("active", True)),
+
+                "total_lectures": counts["total_lectures"],
+
+                "played_lectures": counts["played_lectures"],
+
+                "shared_lectures": counts["shared_lectures"],
+
+                "qa_sessions": counts["qa_sessions"],
+
+                "last_login": member.get("last_login"),
+
+            }
+
+        )
+
+
+
+    unassigned_counts = {
+
+        "total_lectures": max(metrics.get("total_lectures", 0) - assigned_totals["total_lectures"], 0),
+
+        "played_lectures": max(metrics.get("played_lectures", 0) - assigned_totals["played_lectures"], 0),
+
+        "shared_lectures": max(metrics.get("shared_lectures", 0) - assigned_totals["shared_lectures"], 0),
+
+        "pending_lectures": max(metrics.get("pending_lectures", 0) - assigned_totals["pending_lectures"], 0),
+
+        "qa_sessions": max(metrics.get("qa_sessions", 0) - assigned_totals["qa_sessions"], 0),
+
+    }
+
+
+
+    totals = {
+
+        "total_lectures": metrics.get("total_lectures", 0),
+
+        "played_lectures": metrics.get("played_lectures", 0),
+
+        "shared_lectures": metrics.get("shared_lectures", 0),
+
+        "qa_sessions": metrics.get("qa_sessions", 0),
+
+        "pending_lectures": metrics.get("pending_lectures", 0),
+
+    }
+
+
+
+    return {
+
+        "admin_id": admin_id,
+
+        "generated_at": _aware_now().isoformat(),
+
+        "team_size": len(members_payload),
+
+        "totals": totals,
+
+        "members": members_payload,
+
+        "unassigned": {
+
+            "label": "unassigned",
+
+            "total_lectures": unassigned_counts.get("total_lectures", 0),
+
+            "played_lectures": unassigned_counts.get("played_lectures", 0),
+
+            "shared_lectures": unassigned_counts.get("shared_lectures", 0),
+
+            "qa_sessions": 0,
+
+            "pending_lectures": unassigned_counts.get("pending_lectures", 0),
+
+        },
+
+    }
 
 def get_member_dashboard(*, member_id: int, admin_id: int, work_type: str) -> Dict[str, object]:
     member = dashboard_repository.fetch_member(member_id)
@@ -306,7 +455,7 @@ def get_member_dashboard(*, member_id: int, admin_id: int, work_type: str) -> Di
     elif work_type == "student":
         total_chapters = dashboard_repository.count_members(admin_id, work_type="chapter", active_only=True)
         total_lectures = dashboard_repository.count_admin_lectures(admin_id)        
-        total_students = roster_repository.count_roster_students(admin_id)
+        total_students = roster_repository.count_roster_students(admin_id, member_id=member_id)
         payload = {
             "student_metrics": {
                 "total_chapters": total_chapters,
