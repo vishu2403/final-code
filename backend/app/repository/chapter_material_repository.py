@@ -15,7 +15,7 @@ from app.utils.file_handler import (
     ALLOWED_PDF_EXTENSIONS,
     ALLOWED_PDF_TYPES,
     UPLOAD_DIR,
-    get_file_url,
+    get_file_url, #-------------
 )
 from app.config import get_settings
 from app.postgres import get_pg_cursor, get_connection
@@ -148,84 +148,87 @@ def create_chapter_material(
     return result if result else {}
 
 def update_chapter_material_cover_photo(
+
     material_id: int,
+
     *,
+
     cover_photo_url: Optional[str],
+
     cover_photo_s3_key: Optional[str],
+
 ) -> Dict[str, Any]:
+
     query = """
+
         UPDATE chapter_materials
+
         SET cover_photo_url = %(cover_photo_url)s,
+
             cover_photo_s3_key = %(cover_photo_s3_key)s,
+
             updated_at = NOW()
+
         WHERE id = %(id)s
+
         RETURNING *
+
     """
+
     with get_pg_cursor() as cur:
+
         cur.execute(
+
             query,
+
             {
+
                 "id": material_id,
+
                 "cover_photo_url": cover_photo_url,
+
                 "cover_photo_s3_key": cover_photo_s3_key,
+
             },
+
         )
+
         result = cur.fetchone()
+
     return result if result else {}
 
+
 def update_chapter_material_overrides(
-
     material_id: int,
-
     *,
-
     chapter_title_override: Optional[str] = None,
-
     topic_title_override: Optional[str] = None,
-
     video_duration_minutes: Optional[int] = None,
-
     video_resolution: Optional[str] = None,
-
 ) -> Dict[str, Any]:
-
     updates = {}
-
     if chapter_title_override is not None:
-
         updates["chapter_title_override"] = chapter_title_override.strip() or None
-
     if topic_title_override is not None:
-
         updates["topic_title_override"] = topic_title_override.strip() or None
-
     if video_duration_minutes is not None:
-
         updates["video_duration_minutes"] = max(video_duration_minutes, 0)
-
     if video_resolution is not None:
-
         updates["video_resolution"] = video_resolution.strip() or None
 
-
-
     if not updates:
-
         return {}
 
-
-
     set_clause = ", ".join([f"{k} = %({k})s" for k in updates.keys()])
-
     query = f"UPDATE chapter_materials SET {set_clause} WHERE id = %(id)s RETURNING *"
-
     updates["id"] = material_id
 
-
-
     with get_pg_cursor() as cur:
-
         cur.execute(query, updates)
+        result = cur.fetchone()
+    
+    return result if result else {}
+
 
 def get_chapter_material(material_id: int) -> Optional[Dict[str, Any]]:
     query = "SELECT * FROM chapter_materials WHERE id = %(id)s"
@@ -396,7 +399,7 @@ def list_chapters_for_selection(
     subject: str,
 ) -> List[str]:
     query = """
-        SELECT chapter_title, chapter_number
+        SELECT chapter_title_override, chapter_title, chapter_number
         FROM chapter_materials
         WHERE admin_id = %(admin_id)s
         AND LOWER(std) = %(std)s
@@ -411,9 +414,9 @@ def list_chapters_for_selection(
         rows = cur.fetchall()
 
     title_candidates = {
-        (row.get("chapter_title") or "").strip()
+        (row.get("chapter_title_override") or row.get("chapter_title") or "").strip()
         for row in rows
-        if row.get("chapter_title")
+        if (row.get("chapter_title_override") or row.get("chapter_title"))
     }
     if title_candidates:
         return sorted(title_candidates, key=lambda value: value.lower())
@@ -633,6 +636,8 @@ def get_chapter_overview_data(admin_id: int) -> List[Dict[str, Any]]:
     - subject, chapter title, topics, lecture size, video info
     - list of generated lectures pulled from lecture_gen table
     """
+    settings = get_settings()
+
     query = """
         SELECT 
             cm.id,
@@ -642,6 +647,13 @@ def get_chapter_overview_data(admin_id: int) -> List[Dict[str, Any]]:
             cm.board,
             cm.chapter_title,
             cm.chapter_number,
+            cm.chapter_title_override,
+            cm.topic_title_override,
+            cm.video_duration_minutes,
+            cm.video_resolution,
+            cm.file_name,
+            cm.file_path,
+            cm.file_size,
             cm.admin_id,
             cm.created_at AS material_created_at,
             cm.updated_at AS material_updated_at,
@@ -654,7 +666,8 @@ def get_chapter_overview_data(admin_id: int) -> List[Dict[str, Any]]:
             lg.sem AS lecture_sem,
             lg.board AS lecture_board,
             lg.created_at AS lecture_created_at,
-            lg.updated_at AS lecture_updated_at
+            lg.updated_at AS lecture_updated_at,
+            lg.lecture_data
         FROM chapter_materials cm
         LEFT JOIN lecture_gen lg 
             ON lg.material_id = cm.id
@@ -686,7 +699,113 @@ def get_chapter_overview_data(admin_id: int) -> List[Dict[str, Any]]:
         lecture_asset_cache[lecture_uid] = {"json_size": json_size, "video": video_info}
         return lecture_asset_cache[lecture_uid]
 
+    def _extract_video_info(raw: Any) -> Dict[str, Any] | None:
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except json.JSONDecodeError:
+                return None
+        if not isinstance(raw, dict):
+            return None
+
+        # Direct keys commonly used by generators
+        for key in ("video", "video_info", "video_meta"):
+            value = raw.get(key)
+            if value:
+                return value if isinstance(value, dict) else {"value": value}
+
+        assets = raw.get("assets")
+        if isinstance(assets, dict):
+            for key in ("video", "video_file", "videoAsset"):
+                value = assets.get(key)
+                if value:
+                    return value if isinstance(value, dict) else {"value": value}
+
+        link = raw.get("video_link") or raw.get("video_url")
+        if link:
+            return {"link": link}
+
+        return None
+
+    def _topics_from_payload(raw: Any) -> List[str]:
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except json.JSONDecodeError:
+                return []
+        if not isinstance(raw, dict):
+            return []
+
+        slides = raw.get("slides")
+        if not isinstance(slides, list):
+            return []
+
+        topics: List[str] = []
+        for slide in slides:
+            if not isinstance(slide, dict):
+                continue
+            candidate = (slide.get("title") or "").strip()
+            if not candidate or candidate.lower().startswith("i'm sorry"):
+                continue
+            topics.append(candidate)
+            if len(topics) == 5:
+                break
+        return topics
+
+    def _topic_strings_from_material(topics_data: List[Dict[str, Any]]) -> List[str]:
+        results: List[str] = []
+        for topic in topics_data:
+            if not isinstance(topic, dict):
+                continue
+            candidate = (topic.get("title") or topic.get("name") or "").strip()
+            if not candidate:
+                continue
+            results.append(candidate)
+            if len(results) == 5:
+                break
+        return results
+
+    def _extract_duration(raw: Any) -> Optional[int]:
+        payload: Optional[Dict[str, Any]] = None
+        if isinstance(raw, dict):
+            payload = raw
+        elif isinstance(raw, str):
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                payload = None
+
+        if not isinstance(payload, dict):
+            return None
+
+        metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+        candidates = [
+            payload.get("estimated_duration"),
+            payload.get("requested_duration"),
+            metadata.get("duration") if isinstance(metadata, dict) else None,
+        ]
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            try:
+                return int(candidate)
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    default_thumbnail_url = (
+        getattr(settings, "default_lecture_thumbnail", None)
+        or settings.dict().get("default_lecture_thumbnail")
+        or "/static/images/lecture-placeholder.png"
+    )
+    default_duration = (
+        getattr(settings, "default_lecture_duration", None)
+        or settings.dict().get("default_lecture_duration")
+        or 45
+    )
+
     grouped: Dict[int, Dict[str, Any]] = {}
+    lectures: List[Dict[str, Any]] = []
 
     with get_pg_cursor() as cur:
         cur.execute(query, {"admin_id": admin_id})
@@ -694,6 +813,8 @@ def get_chapter_overview_data(admin_id: int) -> List[Dict[str, Any]]:
     
     for row in rows:
         material_id = row["id"]
+        material_size_bytes = row.get("file_size") or 0
+
         if material_id not in grouped:
             topics_data: List[Dict[str, Any]] = []
             extracted_chapter_title = None
@@ -707,24 +828,35 @@ def get_chapter_overview_data(admin_id: int) -> List[Dict[str, Any]]:
                 topics_data = []
 
             chapter_title = (
-                extracted_chapter_title
+                row["chapter_title_override"]
+                or extracted_chapter_title
                 or row["chapter_title"]
                 or row["chapter_number"]
             )
+
+            inferred_topic_title = ""
+            if row.get("topic_title_override"):
+                inferred_topic_title = row["topic_title_override"]
+            elif topics_data:
+                first_topic = topics_data[0]
+                inferred_topic_title = first_topic.get("title") or first_topic.get("name") or ""
+
+            fallback_topic_titles = _topic_strings_from_material(topics_data)
 
             grouped[material_id] = {
                 "material_id": material_id,
                 "subject": row["subject"],
                 "std": row["std"],
-                "sem": row["sem"],
-                "board": row["board"],
                 "chapter": chapter_title,
-                "topics": topics_data,
-                "size": "41.1 KB",
-                "video": None,
+                "file_size_bytes": material_size_bytes,
+                "fallback_topics": fallback_topic_titles,
+                "admin_id": row.get("admin_id"),
                 "generated_lectures": [],
+
                 "_latest_lecture_ts": None,
+
                 "_latest_lecture_size": 0,
+
                 "_latest_video_info": None,
             }
 
@@ -734,58 +866,61 @@ def get_chapter_overview_data(admin_id: int) -> List[Dict[str, Any]]:
             lecture_size_bytes = lecture_assets.get("json_size", 0) or 0
             video_info = lecture_assets.get("video")
 
-            lecture_payload = {
-                "lecture_id": lecture_id,
-                "lecture_uid": row.get("lecture_uid"),
-                "lecture_title": row.get("lecture_chapter_title"),
-                "lecture_link": row.get("lecture_link"),
-                "subject": row.get("lecture_subject") or row["subject"],
-                "std": row.get("lecture_std") or row["std"],
-                "sem": row.get("lecture_sem") or row["sem"],
-                "board": row.get("lecture_board") or row["board"],
-                "material_id": material_id,
-                "created_at": row.get("lecture_created_at"),
-                "updated_at": row.get("lecture_updated_at"),
-                "lecture_size_bytes": lecture_size_bytes,
-                "lecture_size": formatFileSize(lecture_size_bytes) if lecture_size_bytes else None,
-                "video": video_info,
-            }
+            lecture_data_details = row.get("lecture_data")
+            if not video_info:
+                video_info = _extract_video_info(lecture_data_details) or {}
+            if not video_info and row.get("lecture_link"):
+                video_info = {"link": row.get("lecture_link")}
 
             chapter_entry = grouped[material_id]
-            chapter_entry["generated_lectures"].append(lecture_payload)
+            lecture_topics = _topics_from_payload(lecture_data_details)
+            if not lecture_topics:
+                lecture_topics = chapter_entry.get("fallback_topics", [])
 
-            lecture_ts = row.get("lecture_created_at")
-            latest_ts = chapter_entry["_latest_lecture_ts"]
-            is_newer = False
-            if lecture_ts and (latest_ts is None or lecture_ts > latest_ts):
-                is_newer = True
-            elif latest_ts is None and not lecture_ts:
-                is_newer = True
+            lecture_duration = _extract_duration(lecture_data_details)
+            if lecture_duration is None:
+                lecture_duration = row.get("video_duration_minutes") or default_duration
 
-            if is_newer:
-                chapter_entry["_latest_lecture_ts"] = lecture_ts
-                chapter_entry["_latest_lecture_size"] = lecture_size_bytes
-                chapter_entry["_latest_video_info"] = video_info
+            thumbnail_url: Optional[str] = None
+            if isinstance(video_info, dict):
+                thumb_candidate = video_info.get("thumbnail") or video_info.get("thumbnail_url") or video_info.get("thumb")
+                if isinstance(thumb_candidate, str) and thumb_candidate.strip():
+                    thumbnail_url = thumb_candidate.strip()
+            if not thumbnail_url:
+                thumbnail_url = default_thumbnail_url
 
-    results: List[Dict[str, Any]] = []
-    for entry in grouped.values():
-        latest_size = entry.pop("_latest_lecture_size", 0)
-        latest_video = entry.pop("_latest_video_info", None)
-        entry.pop("_latest_lecture_ts", None)
+            lecture_uid = row.get("lecture_uid")
+            display_size_bytes = lecture_size_bytes or chapter_entry["file_size_bytes"]
+            chapter_value = (
+                row.get("lecture_chapter_title")
+                or row.get("chapter_title")
+                or chapter_entry["chapter"]
+            )
 
-        if latest_size:
-            entry["size"] = formatFileSize(latest_size)
-        if latest_video:
-            entry["video"] = latest_video
+            lecture_payload = {
+                "id": str(lecture_uid or lecture_id),
+                "lecture_uid": lecture_uid,
+                "lecture_uuid": lecture_uid,
+                "admin_id": chapter_entry.get("admin_id"),
+                "material_id": material_id,
+                "lecture_link": row.get("lecture_link"),
+                "std": row.get("lecture_std") or chapter_entry["std"],
+                "subject": row.get("lecture_subject") or chapter_entry["subject"],
+                "chapter": chapter_value,
+                "topics": lecture_topics,
+                "size": formatFileSize(display_size_bytes),
+                "video_duration_minutes": lecture_duration,
+                "thumbnail_url": thumbnail_url,
+                "_created_at": row.get("lecture_created_at"),
+            }
 
-        entry["generated_lectures"].sort(
-            key=lambda item: item.get("created_at") or datetime.min,
-            reverse=True,
-        )
+            lectures.append(lecture_payload)
 
-        results.append(entry)
-    
-    return results
+    lectures.sort(key=lambda item: item.get("_created_at") or datetime.min, reverse=True)
+    for lecture in lectures:
+        lecture.pop("_created_at", None)
+
+    return lectures
 
 
 # -------------------------

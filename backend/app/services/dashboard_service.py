@@ -4,13 +4,15 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any
+
 from ..repository import (
     dashboard_repository,
     lecture_credit_repository,
+    member_repository,
     student_management_repository as roster_repository,
     member_repository,
 )
-
+from ..repository.chapter_material_repository import get_chapter_overview_data
 from ..schemas import AdminResponse, MemberResponse, PackageResponse, WorkType
 from ..repository.chapter_material_repository import get_chapter_overview_data
 from ..plan_limits import PLAN_CREDIT_LIMITS
@@ -78,194 +80,377 @@ def _collect_admin_lecture_metrics(admin_id: int) -> Dict[str, int]:
     return dashboard_repository.get_admin_lecture_metrics(admin_id)
 
 
+def get_chapter_overview(admin_id: int) -> Dict[str, Any]:
+    """Return flattened chapter overview lecture list wrapped in items container."""
+
+    return {"items": get_chapter_overview_data(admin_id)}
+
+
 def get_admin_dashboard_from_object(admin: dict) -> Dict[str, object]:
     """Build dashboard data from an admin object (used for portal admins)."""
     admin_id = admin.get("admin_id") or admin.get("admin_aid")
     if not admin_id:
         raise ValueError("Admin ID not found in admin object")
     
-    # Normalize the admin object to ensure it has the expected fields
+        # Normalize the admin object to ensure it has the expected fields
+
     normalized_admin = {
+
         "admin_id": admin_id,
+
         "name": admin.get("name") or admin.get("full_name"),
+
         "email": admin.get("email"),
+
         "package": admin.get("package") or admin.get("package_plan"),
+
         "start_date": admin.get("start_date"),
+
         "expiry_date": admin.get("expiry_date"),
+
         "has_inai_credentials": admin.get("has_inai_credentials", False),
+
         "active": admin.get("active", True),
+
         "is_super_admin": admin.get("is_super_admin", False),
+
         "created_at": admin.get("created_at"),
+
         "last_login": admin.get("last_login"),
+
     }
+
+
 
     package = (
+
         dashboard_repository.fetch_package(normalized_admin.get("package"))
+
         if normalized_admin.get("package")
+
         else None
+
     )
+
+
 
     plan_label = _normalize_plan_label(normalized_admin.get("package"))
+
     plan_credit_total = PLAN_CREDIT_LIMITS.get(plan_label)
+
     credit_usage = lecture_credit_repository.get_usage(admin_id)
+
     credit_remaining = (
+
         max(plan_credit_total - credit_usage["credits_used"], 0)
+
         if plan_credit_total is not None
+
         else None
+
     )
+
     post_limit_generated = (
+
         credit_usage["credits_used"] - plan_credit_total
+
         if plan_credit_total is not None and credit_usage["credits_used"] > plan_credit_total
+
         else 0
+
     )
+
+
 
     total_members = dashboard_repository.count_members(admin_id, active_only=False)
+
     active_members = dashboard_repository.count_members(admin_id, active_only=True)
+
     member_counts = dashboard_repository.count_members_by_work_type(admin_id)
 
+
+
     computed_expiry = _compute_expiry(normalized_admin, package)
+
     if computed_expiry:
+
         delta = computed_expiry - _aware_now()
+
         days_until_expiry = max(delta.days, 0)
+
         expiry_iso = computed_expiry.isoformat()
+
     else:
+
         days_until_expiry = 0
+
         expiry_iso = None
 
+
+
     week_ago = datetime.utcnow() - timedelta(days=7)
+
     recent_activity = dashboard_repository.recent_member_activity(admin_id, week_ago)
+
     lecture_metrics = _collect_admin_lecture_metrics(admin_id)
 
+
+
     package_usage: Dict[str, object] = {}
+
     if package:
+
         limit = package["video_limit"] if package["video_limit"] > 0 else "unlimited"
+
         usage_percentage = (
+
             active_members / package["video_limit"] * 100
+
             if isinstance(limit, (int, float)) and package["video_limit"] > 0
+
             else 0
+
         )
+
         package_usage = {
+
             "members_used": active_members,
+
             "members_limit": limit,
+
             "usage_percentage": usage_percentage,
+
         }
 
-    return {
-        "admin_info": _serialize_admin(normalized_admin),
-        "package_info": _serialize_package(package),
-        "member_statistics": {
-            "total_members": total_members,
-            "active_members": active_members,
-            "inactive_members": total_members - active_members,
-            "chapter_members": member_counts.get("chapter", 0),
-            "student_members": member_counts.get("student", 0),
-            "lecture_members": member_counts.get("lecture", 0),
-            "lecture_metrics": lecture_metrics,
-        },
-        "account_status": {
-            "days_until_expiry": days_until_expiry,
-            "is_expired": days_until_expiry < 0,
-            "expiry_date": expiry_iso,
-            "subscription_status": "active" if days_until_expiry > 0 else "expired",
-        },
-        "lecture_credits": {
-            "plan_label": plan_label,
-            "total": plan_credit_total,
-            "used": credit_usage["credits_used"],
-            "remaining": credit_remaining,
-            "post_limit_generated": post_limit_generated,
-            "overflow_attempts": credit_usage["overflow_attempts"],
-        },
-        "recent_activity": recent_activity,
-        "package_usage": package_usage,
-    }
 
+
+    return {
+
+        "admin_info": _serialize_admin(normalized_admin),
+
+        "package_info": _serialize_package(package),
+
+        "member_statistics": {
+
+            "total_members": total_members,
+
+            "active_members": active_members,
+
+            "inactive_members": total_members - active_members,
+
+            "chapter_members": member_counts.get("chapter", 0),
+
+            "student_members": member_counts.get("student", 0),
+
+            "lecture_members": member_counts.get("lecture", 0),
+
+            "lecture_metrics": lecture_metrics,
+
+        },
+
+        "account_status": {
+
+            "days_until_expiry": days_until_expiry,
+
+            "is_expired": days_until_expiry < 0,
+
+            "expiry_date": expiry_iso,
+
+            "subscription_status": "active" if days_until_expiry > 0 else "expired",
+
+        },
+
+        "lecture_credits": {
+
+            "plan_label": plan_label,
+
+            "total": plan_credit_total,
+
+            "used": credit_usage["credits_used"],
+
+            "remaining": credit_remaining,
+
+            "post_limit_generated": post_limit_generated,
+
+            "overflow_attempts": credit_usage["overflow_attempts"],
+
+        },
+
+        "recent_activity": recent_activity,
+
+        "package_usage": package_usage,
+
+    }
 
 def get_admin_dashboard(admin_id: int) -> Dict[str, object]:
     admin = dashboard_repository.fetch_admin(admin_id)
+
     if not admin:
+
         raise ValueError("Admin not found")
 
+
+
     package = (
+
         dashboard_repository.fetch_package(admin.get("package"))
+
         if admin.get("package")
+
         else None
+
     )
+
+
 
     plan_label = _normalize_plan_label(admin.get("package"))
+
     plan_credit_total = PLAN_CREDIT_LIMITS.get(plan_label)
+
     credit_usage = lecture_credit_repository.get_usage(admin_id)
+
     credit_remaining = (
+
         max(plan_credit_total - credit_usage["credits_used"], 0)
+
         if plan_credit_total is not None
+
         else None
+
     )
+
     post_limit_generated = (
+
         credit_usage["credits_used"] - plan_credit_total
+
         if plan_credit_total is not None and credit_usage["credits_used"] > plan_credit_total
+
         else 0
+
     )
+
+
 
     total_members = dashboard_repository.count_members(admin_id, active_only=False)
+
     active_members = dashboard_repository.count_members(admin_id, active_only=True)
+
     member_counts = dashboard_repository.count_members_by_work_type(admin_id)
 
+
+
     computed_expiry = _compute_expiry(admin, package)
+
     if computed_expiry:
+
         delta = computed_expiry - _aware_now()
+
         days_until_expiry = max(delta.days, 0)
+
         expiry_iso = computed_expiry.isoformat()
+
     else:
+
         days_until_expiry = 0
+
         expiry_iso = None
 
+
+
     week_ago = datetime.utcnow() - timedelta(days=7)
+
     recent_activity = dashboard_repository.recent_member_activity(admin_id, week_ago)
+
     lecture_metrics = _collect_admin_lecture_metrics(admin_id)
 
+
+
     package_usage: Dict[str, object] = {}
+
     if package:
+
         limit = package["video_limit"] if package["video_limit"] > 0 else "unlimited"
+
         usage_percentage = (
+
             active_members / package["video_limit"] * 100
+
             if isinstance(limit, (int, float)) and package["video_limit"] > 0
+
             else 0
+
         )
+
         package_usage = {
+
             "members_used": active_members,
+
             "members_limit": limit,
+
             "usage_percentage": usage_percentage,
+
         }
 
+
+
     return {
+
         "admin_info": _serialize_admin(admin),
+
         "package_info": _serialize_package(package),
+
         "member_statistics": {
+
             "total_members": total_members,
+
             "active_members": active_members,
+
             "inactive_members": total_members - active_members,
+
             "chapter_members": member_counts.get("chapter", 0),
+
             "student_members": member_counts.get("student", 0),
+
             "lecture_members": member_counts.get("lecture", 0),
+
             "lecture_metrics": lecture_metrics,
+
         },
+
         "account_status": {
+
             "days_until_expiry": days_until_expiry,
+
             "is_expired": days_until_expiry < 0,
+
             "expiry_date": expiry_iso,
+
             "subscription_status": "active" if days_until_expiry > 0 else "expired",
+
         },
+
         "lecture_credits": {
+
             "plan_label": plan_label,
+
             "total": plan_credit_total,
+
             "used": credit_usage["credits_used"],
+
             "remaining": credit_remaining,
+
             "post_limit_generated": post_limit_generated,
+
             "overflow_attempts": credit_usage["overflow_attempts"],
+
         },
+
         "recent_activity": recent_activity,
+
         "package_usage": package_usage,
+
     }
+
 
 def get_admin_lecture_dashboard(admin_id: int) -> Dict[str, object]:
     """Return lecture team overview for the admin."""
@@ -347,6 +532,7 @@ def get_admin_lecture_dashboard(admin_id: int) -> Dict[str, object]:
         },
     }
 
+
 def get_member_dashboard(*, member_id: int, admin_id: int, work_type: str) -> Dict[str, object]:
     member = dashboard_repository.fetch_member(member_id)
     if not member:
@@ -369,9 +555,7 @@ def get_member_dashboard(*, member_id: int, admin_id: int, work_type: str) -> Di
             work_type="student",
             field="last_login",
         )
-
         chapter_overview = get_chapter_overview_data(admin_id)
-
         payload = {
             "chapter_metrics": {
                 "total_students": total_students,
@@ -380,11 +564,12 @@ def get_member_dashboard(*, member_id: int, admin_id: int, work_type: str) -> Di
             },
             "chapter_overview": chapter_overview
         }
-
     elif work_type == "student":
         total_chapters = dashboard_repository.count_members(admin_id, work_type="chapter", active_only=True)
-        # total_lectures = dashboard_repository.count_total_lectures(admin_id) 
-        total_lectures = dashboard_repository.count_admin_lectures(admin_id)        
+        
+        total_lectures = dashboard_repository.count_total_lectures(admin_id) 
+
+        # total_lectures = dashboard_repository.count_admin_lectures(admin_id)         
         total_students = roster_repository.count_roster_students(admin_id)
         payload = {
             "student_metrics": {
@@ -425,51 +610,94 @@ def get_member_dashboard(*, member_id: int, admin_id: int, work_type: str) -> Di
         "work_type": work_type,
         **payload,
     }
+
 def get_student_management_dashboard(admin_id: int) -> Dict[str, object]:
+
     """Return condensed student management metrics for the admin portal dashboard."""
 
+
+
     total_rostered_students = roster_repository.count_roster_students(admin_id)
+
     student_members = member_repository.list_members(admin_id, work_type="student", active_only=True)
+
     if not student_members:
+
         student_members = member_repository.list_members(admin_id, work_type="student", active_only=False)
+
+
 
     reference_member = student_members[0] if student_members else None
 
+
+
     admin = dashboard_repository.fetch_admin(admin_id)
+
     package = (
+
         dashboard_repository.fetch_package(admin.get("package"))
+
         if admin and admin.get("package")
+
         else None
+
     )
+
+
 
     total_chapters = dashboard_repository.count_members(admin_id, work_type="chapter", active_only=True)
+
     total_lectures = dashboard_repository.count_total_lectures(admin_id)
 
+
+
     last_activity = (
+
         reference_member["last_login"].isoformat()
+
         if reference_member and reference_member.get("last_login")
+
         else None
+
     )
 
+
+
     student_metrics = {
+
         "total_chapters": total_chapters,
+
         "total_lectures": total_lectures,
+
         "total_students": total_rostered_students,
+
         "total_paid": 0,
+
         "progress": {
+
             "completed_lectures": 0,
+
             "total_available_lectures": total_lectures,
+
             "progress_percentage": 0,
+
             "last_activity": last_activity,
+
         },
+
     }
+
+
 
     return {
-        "package_info": _serialize_package(package),
-        "work_type": "student",
-        "student_metrics": student_metrics,
-    }
 
+        "package_info": _serialize_package(package),
+
+        "work_type": "student",
+
+        "student_metrics": student_metrics,
+
+    }
 def get_summary(admin_id: int) -> Dict[str, object]:
     summary = dashboard_repository.dashboard_summary(admin_id)
     summary["alerts"] = []
@@ -494,12 +722,19 @@ def get_summary(admin_id: int) -> Dict[str, object]:
 
 
 def get_student_management_summary(admin_id: int) -> Dict[str, int]:
+
     """Return only roster-based student counts for the admin."""
 
     roster_students = roster_repository.count_roster_students(admin_id)
+
     return {
+
         # "roster_students": roster_students,
+
         "total_students": roster_students,
+
         "total_lectures": 0,
+
         "total_paid": 0,
+
     }
