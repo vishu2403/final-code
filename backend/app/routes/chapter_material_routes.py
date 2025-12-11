@@ -1702,7 +1702,7 @@ async def add_manual_topic_route(
 # -------------------------
 # Assistant suggest topics (calls Groq)
 # -------------------------
-@router.post("/{material_id}/assistant-suggest-topics/")
+@router.post("/{material_id}/assistant-suggest-topics")
 async def assistant_suggest_topics(
     material_id: int,
     request: AssistantSuggestRequest,
