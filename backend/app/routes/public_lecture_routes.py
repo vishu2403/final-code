@@ -108,19 +108,55 @@ async def get_lecture_filters(
         "data": std_subject_filters,
     }
 
+
 @router.get(
+
     "/public_lecture/filters",
-    summary="Fetch available class and subject filters from database",
+
+    summary="Fetch available class and subject filters for authenticated admin",
+
 )
+
 async def get_public_lecture_filters(
+
+    current_user: Dict[str, Any] = Depends(get_current_user),
+
     db: Session = Depends(get_db),
+
 ) -> Dict[str, Any]:
+
+    # Extract admin_id: for admins it's in "id", for members it's in "admin_id"
+
+    if current_user.get("role") == "admin":
+
+        admin_id = current_user.get("id")
+
+    else:
+
+        admin_id = current_user.get("admin_id")
+
+    
+
     rows = (
+
         db.query(LectureGen.std, LectureGen.subject)
-        .filter(LectureGen.std.isnot(None), LectureGen.subject.isnot(None))
+
+        .filter(
+
+            LectureGen.std.isnot(None),
+
+            LectureGen.subject.isnot(None),
+
+            LectureGen.admin_id == admin_id
+
+        )
+
         .distinct()
+
         .all()
+
     )
+   
 
     class_map: DefaultDict[str, Set[str]] = DefaultDict(set)
     for std, subject in rows:
