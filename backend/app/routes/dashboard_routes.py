@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from ..utils.dependencies import admin_or_chapter_member, member_required, onboarding_completed_required
 
 from ..schemas import ResponseBase, WorkType
 from ..services import dashboard_service
@@ -22,6 +23,18 @@ async def get_admin_dashboard(current_user: dict = Depends(onboarding_completed_
     except ValueError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin not found")
     return ResponseBase(status=True, message="Admin dashboard data retrieved", data=data)
+
+@router.get("/chapter", response_model=ResponseBase)
+async def get_chapter_dashboard(current_user: dict = Depends(admin_or_chapter_member)):
+    if current_user["role"] == "admin":
+        data = dashboard_service.get_admin_dashboard(current_user["id"])
+    else:
+        data = dashboard_service.get_member_dashboard(
+            member_id=current_user["id"],
+            admin_id=current_user["admin_id"],
+            work_type="chapter",
+        )
+    return ResponseBase(status=True, message="Chapter dashboard data retrieved", data=data)
 
 
 @router.get("/chapter", response_model=ResponseBase)

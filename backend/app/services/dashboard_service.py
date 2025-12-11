@@ -12,6 +12,7 @@ from ..repository import (
 )
 
 from ..schemas import AdminResponse, MemberResponse, PackageResponse, WorkType
+from ..repository.chapter_material_repository import get_chapter_overview_data
 from ..plan_limits import PLAN_CREDIT_LIMITS
 
 

@@ -15,6 +15,7 @@ from app.utils.file_handler import (
     ALLOWED_PDF_EXTENSIONS,
     ALLOWED_PDF_TYPES,
     UPLOAD_DIR,
+    get_file_url,
 )
 from app.config import get_settings
 from app.postgres import get_pg_cursor, get_connection
@@ -171,6 +172,60 @@ def update_chapter_material_cover_photo(
         )
         result = cur.fetchone()
     return result if result else {}
+
+def update_chapter_material_overrides(
+
+    material_id: int,
+
+    *,
+
+    chapter_title_override: Optional[str] = None,
+
+    topic_title_override: Optional[str] = None,
+
+    video_duration_minutes: Optional[int] = None,
+
+    video_resolution: Optional[str] = None,
+
+) -> Dict[str, Any]:
+
+    updates = {}
+
+    if chapter_title_override is not None:
+
+        updates["chapter_title_override"] = chapter_title_override.strip() or None
+
+    if topic_title_override is not None:
+
+        updates["topic_title_override"] = topic_title_override.strip() or None
+
+    if video_duration_minutes is not None:
+
+        updates["video_duration_minutes"] = max(video_duration_minutes, 0)
+
+    if video_resolution is not None:
+
+        updates["video_resolution"] = video_resolution.strip() or None
+
+
+
+    if not updates:
+
+        return {}
+
+
+
+    set_clause = ", ".join([f"{k} = %({k})s" for k in updates.keys()])
+
+    query = f"UPDATE chapter_materials SET {set_clause} WHERE id = %(id)s RETURNING *"
+
+    updates["id"] = material_id
+
+
+
+    with get_pg_cursor() as cur:
+
+        cur.execute(query, updates)
 
 def get_chapter_material(material_id: int) -> Optional[Dict[str, Any]]:
     query = "SELECT * FROM chapter_materials WHERE id = %(id)s"
