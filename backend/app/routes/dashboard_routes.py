@@ -27,7 +27,7 @@ async def get_admin_dashboard(current_user: dict = Depends(onboarding_completed_
 @router.get("/chapter", response_model=ResponseBase)
 async def get_chapter_dashboard(current_user: dict = Depends(admin_or_chapter_member)):
     if current_user["role"] == "admin":
-        data = dashboard_service.get_admin_dashboard(current_user["id"])
+        data = dashboard_service.get_chapter_overview(current_user["id"])
     else:
         data = dashboard_service.get_member_dashboard(
             member_id=current_user["id"],
