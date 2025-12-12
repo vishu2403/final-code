@@ -245,7 +245,7 @@ async def get_public_lecture_json(
             detail=f"Error loading lecture: {exc}",
         ) from exc
 
-    # Remove internal-only metadata keys user doesn’t want exposed
+    # Remove internal-only metadata keys user doesn't want exposed
     metadata = lecture_data.get("metadata") or {}
     for key in [
         "topics_source_file",
@@ -265,3 +265,4 @@ async def get_public_lecture_json(
             slide.pop("audio_path", None)
 
     return JSONResponse(content=lecture_data)
+

@@ -547,7 +547,7 @@ async def get_lecture(
 
 @router.get(
     "",
- response_model=LectureListResponse,
+    response_model=LectureListResponse,
     summary="List lectures for the authenticated admin",
     description="Get a list of lectures generated within the current admin account with optional filtering"
 )
@@ -586,11 +586,11 @@ async def list_lectures(
             offset=offset,
             admin_id=admin_id,
         )
-        lecture_responses = [LectureSummaryResponse(**lecture) for lecture in lectures]
+        lecture_summaries = [LectureSummaryResponse(**lecture) for lecture in lectures]
         return LectureListResponse(
             status=True,
-            message="Lectures retrieved successfully",
-            data=lecture_responses
+            message="Lecture filters fetched successfully",
+            data=lecture_summaries
         )
         
     except Exception as e:
@@ -598,6 +598,7 @@ async def list_lectures(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error listing lectures: {str(e)}"
         )
+
 
 @router.delete(
     "/{lecture_id}",
@@ -627,6 +628,7 @@ async def delete_lecture(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error deleting lecture: {str(e)}"
         )
+
         
 @router.delete(
     "",
@@ -669,6 +671,7 @@ async def bulk_delete_lectures(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error deleting lectures: {exc}",
         )
+
 
 # ============================================================================
 # QUESTION & ANSWER ENDPOINTS
