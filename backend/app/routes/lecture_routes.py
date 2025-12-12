@@ -586,7 +586,12 @@ async def list_lectures(
             offset=offset,
             admin_id=admin_id,
         )
-        return [LectureSummaryResponse(**lecture) for lecture in lectures]
+        lecture_responses = [LectureSummaryResponse(**lecture) for lecture in lectures]
+        return LectureListResponse(
+            status=True,
+            message="Lectures retrieved successfully",
+            data=lecture_responses
+        )
         
     except Exception as e:
         raise HTTPException(
