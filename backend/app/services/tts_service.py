@@ -46,7 +46,7 @@ def resolve_gcp_credentials_path(configured_path: str | None = None) -> Optional
 class GoogleTTSService:
     """Wrapper around Google Cloud Text-to-Speech client."""
 
-    _CHUNK_CHAR_LIMIT = 4000
+    _CHUNK_CHAR_LIMIT = 2500
 
     def __init__(
         self,
