@@ -134,36 +134,52 @@ def list_shared_lectures(
     std: Optional[str] = None,
     subject: Optional[str] = None,
 ) -> List[Dict[str, object]]:
-    """Return lectures shared for the given admin with optional filters."""
+    """Return lectures shared for the given admin with optional filters.
 
-    filters: List[str] = ["lg.lecture_shared IS TRUE"]
+        NOTE:
+        - The product flow currently records shared lectures in the
+        ``student_portal_videos`` table (video_url column).
+        - This repository previously looked only at ``lecture_gen`` +
+        ``lecture_shares``. To align with the actual sharing behaviour
+        and ensure the `/lectures/shared` API reflects what teachers
+        share to students, we now derive the shared lecture list from
+        ``student_portal_videos`` when possible.
+        """
+
+    filters: List[str] = ["spv.admin_id = %(admin_id)s"]
     params: Dict[str, object] = {"admin_id": admin_id}
 
     if std:
-        filters.append("LOWER(lg.std) = LOWER(%(std)s)")
+        filters.append("LOWER(spv.std) = LOWER(%(std)s)")
         params["std"] = std
 
     if subject:
-        filters.append("LOWER(lg.subject) = LOWER(%(subject)s)")
+        filters.append("LOWER(spv.subject) = LOWER(%(subject)s)")
         params["subject"] = subject
 
-    where_clause = " AND ".join(["lg.admin_id = %(admin_id)s"] + filters)
+    where_clause = " AND ".join(filters)
+
+    # We attempt to parse a lecture_id from the student_portal_videos.video_url
+    # assuming URLs of the form `/lectures/<std>/<subject>/<lecture_id>.json`.
+    # If the format differs, lecture_id may be NULL but the record will still
+    # surface as a shared entry with its video_url.
 
     query = f"""
         SELECT
-            lg.lecture_uid AS lecture_id,
-            lg.lecture_title AS title,
-            lg.std,
-            lg.subject,
-            lg.lecture_link AS lecture_url,
-            MAX(ls.shared_at) AS last_shared_at,
-            lg.updated_at AS lecture_updated_at
-        FROM lecture_gen lg
-        LEFT JOIN lecture_shares ls
-            ON ls.lecture_id = lg.lecture_uid
+COALESCE(
+                NULLIF(split_part(split_part(spv.video_url, '/', 5), '.', 1), ''),
+                NULLIF(split_part(spv.video_url, '/', 4), ''),
+                spv.id::text
+            ) AS lecture_id,
+            spv.title AS title,
+            spv.std,
+            spv.subject,
+            spv.video_url AS lecture_url,
+            spv.created_at AS last_shared_at,
+            spv.created_at AS lecture_updated_at
+        FROM student_portal_videos spv
         WHERE {where_clause}
-        GROUP BY lg.lecture_uid, lg.lecture_title, lg.std, lg.subject, lg.lecture_link, lg.updated_at
-        ORDER BY last_shared_at DESC NULLS LAST, lecture_updated_at DESC
+        ORDER BY spv.created_at DESC
     """
 
     with get_pg_cursor() as cur:
