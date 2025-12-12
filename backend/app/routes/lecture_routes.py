@@ -26,6 +26,7 @@ from app.schemas.lecture_schema import (
     AnswerResponse,
     ErrorResponse,
     GenerationStatus,
+    LectureListResponse,
 )
 from app.repository.lecture_repository import LectureRepository
 from app.repository import student_portal_video_repository
@@ -546,8 +547,8 @@ async def get_lecture(
 
 @router.get(
     "",
-    response_model=List[LectureSummaryResponse],
-    summary="List  lectures for the autenticated admin",
+ response_model=LectureListResponse,
+    summary="List lectures for the authenticated admin",
     description="Get a list of lectures generated within the current admin account with optional filtering"
 )
 async def list_lectures(
@@ -559,7 +560,7 @@ async def list_lectures(
     offset: int = Query(0, ge=0, description="Pagination offset"),
     current_user: Dict[str, Any] = Depends(get_current_user),
     repository: LectureRepository = Depends(get_repository),
-) -> List[LectureSummaryResponse]:
+) -> LectureListResponse:
     """
     List all lectures with pagination and filtering.
     - *language*: Optional filter by language (English, Hindi, Gujarati)

@@ -112,6 +112,11 @@ class LectureUpdate(BaseModel):
     style: Optional[str] = None
     metadata: Optional[dict] = None
 
+class LectureListResponse(BaseModel):
+    status: bool
+    message: str
+    data: List[LectureSummaryResponse]    
+
 
 # Backwards compatibility alias for legacy imports
 LectureCreate = CreateLectureRequest
@@ -133,4 +138,5 @@ __all__ = [
     "GenerationStatus",
     "LectureDashboardResponse",
     "LectureUpdate",
+    "LectureListResponse",
 ]
