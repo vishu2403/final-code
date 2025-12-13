@@ -513,7 +513,6 @@ async def delete_shared_lecture(
     )
     return LectureShareDeleteResponse(**result)
 
-
 @router.get(
     "/{lecture_id}",
     response_model=LectureResponse,

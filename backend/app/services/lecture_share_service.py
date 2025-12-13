@@ -503,9 +503,25 @@ class LectureShareService:
                 detail="Lecture does not belong to the current admin",
             )
 
-        removed_records = lecture_share_repository.delete_shares_for_lecture(lecture_id=lecture_row.get("lecture_uid"))
+        share_removed_records = lecture_share_repository.delete_shares_for_lecture(
+            lecture_id=lecture_row.get("lecture_uid")
+        )
+
+        video_removed_records = student_portal_video_repository.delete_lecture_videos_by_lecture_id(
+            admin_id=admin_id,
+            lecture_id=lecture_row.get("lecture_uid"),
+        )
+
+        removed_records = (share_removed_records or 0) + (video_removed_records or 0)
 
         lecture_was_shared = bool(lecture_row.get("lecture_shared"))
+
+        if not lecture_was_shared and removed_records == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Lecture not found",
+            )
+
         if lecture_was_shared or removed_records:
             # Update lecture_shared flag in database
             with get_pg_cursor() as cur:
