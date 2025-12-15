@@ -219,7 +219,17 @@ async def share_lecture_recording(
     # Resolve lecture metadata and admin context from DB
     with get_pg_cursor() as cur:
         cur.execute(
-            "SELECT admin_id, lecture_title, subject, std, lecture_data FROM lecture_gen WHERE lecture_uid = %(lecture_uid)s",
+            """
+            SELECT
+                admin_id,
+                lecture_title,
+                subject,
+                std,
+                lecture_data,
+                cover_photo_url
+            FROM lecture_gen
+            WHERE lecture_uid = %(lecture_uid)s
+            """,
             {"lecture_uid": lecture_id},
         )
         lecture_row = cur.fetchone()
@@ -268,6 +278,12 @@ async def share_lecture_recording(
         metadata.setdefault("sem", lecture_row.get("sem"))
     if lecture_row.get("board"):
         metadata.setdefault("board", lecture_row.get("board"))
+
+    cover_photo_url_value = lecture_row.get("cover_photo_url")
+    if isinstance(cover_photo_url_value, str):
+        cover_photo_url_value = cover_photo_url_value.strip() or None
+    else:
+        cover_photo_url_value = None
 
     resolved_subject = share_service._resolve_subject(
         request_subject=None,
@@ -338,6 +354,9 @@ async def share_lecture_recording(
 
     thumbnail_url: Optional[str] = None
     thumbnail_candidates: List[Optional[str]] = []
+
+    if cover_photo_url_value:
+        thumbnail_candidates.append(cover_photo_url_value)
 
     if isinstance(metadata, dict):
         thumbnail_candidates.extend(
@@ -462,6 +481,8 @@ async def share_lecture_recording(
         video_url=video_url_value,
         thumbnail_url=thumbnail_url_value,
     )
+    if isinstance(video_record, dict):
+        video_record["cover_photo_url"] = cover_photo_url_value or thumbnail_url_value
 
     return {
         "status": True,
