@@ -109,6 +109,9 @@ async def create_lecture(
     sem_value = sem or metadata.get("sem")
     board_value = board or metadata.get("board")
 
+    record["created_at"] = record["created_at"].isoformat()
+    record["updated_at"] = record["updated_at"].isoformat()
+
     with get_pg_cursor() as cur:
         cur.execute("SELECT * FROM lecture_gen WHERE lecture_uid = %(lecture_uid)s", {"lecture_uid": lecture_id})
         existing_row = cur.fetchone()
