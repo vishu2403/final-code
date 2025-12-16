@@ -711,6 +711,157 @@ class GroqService:
                 slide["bullets"] = processed_bullets
         
         return slides
+
+    def _coerce_slide_count_to_nine(
+        self,
+        *,
+        slides: List[Dict[str, Any]],
+        source_text: str,
+        language: str,
+        duration: int,
+    ) -> List[Dict[str, Any]]:
+        """Trim or synthesize slides so the payload always contains exactly 9 entries."""
+        slides = slides or []
+        normalized: List[Dict[str, Any]] = []
+        for idx, slide in enumerate(slides[:9]):
+            normalized.append(
+                {
+                    "number": idx + 1,
+                    "title": str(slide.get("title") or f"Slide {idx + 1}").strip(),
+                    "bullets": slide.get("bullets") if isinstance(slide.get("bullets"), list) else [],
+                    "narration": str(slide.get("narration") or "").strip(),
+                    "question": str(slide.get("question") or "").strip(),
+                }
+            )
+        
+        if len(normalized) == 9:
+            return normalized
+        
+        topic_hint = self._guess_topic_title(source_text)
+        sections = self._split_source_into_sections(source_text, 9)
+        blueprints = self._slide_blueprints(topic_hint, duration)
+        
+        while len(normalized) < 9:
+            idx = len(normalized)
+            blueprint = blueprints[idx]
+            narration = self._summarize_text(
+                text=sections[idx],
+                target_words=blueprint["target_words"],
+                fallback=blueprint["narration"],
+            )
+            placeholder = {
+                "number": idx + 1,
+                "title": blueprint["title"],
+                "bullets": blueprint["bullets"],
+                "narration": narration,
+                "question": blueprint["question"],
+            }
+            normalized.append(placeholder)
+        
+        return normalized
+
+    def _slide_blueprints(self, topic: str, duration: int) -> List[Dict[str, Any]]:
+        """Provide deterministic structure for each slide slot."""
+        word_targets = _get_word_targets(duration)
+        detailed_words = word_targets["deep"]
+        normal_words = word_targets["normal"]
+        
+        detailed_template = {
+            "bullets": [],
+            "question": "",
+            "target_words": detailed_words,
+        }
+        
+        return [
+            {
+                "title": f"Introduction to {topic}",
+                "bullets": [],
+                "narration": f"Introduce the chapter on {topic} and outline learning goals.",
+                "question": "",
+                "target_words": word_targets["intro"],
+            },
+            {
+                "title": "Key Concepts Overview",
+                "bullets": [f"Core idea about {topic}", "Important fact", "Key relationship"],
+                "narration": f"Summarize the essential concepts students must know about {topic}.",
+                "question": "Which key concept feels most familiar?",
+                "target_words": normal_words,
+            },
+            {
+                "title": "Deep Understanding",
+                "bullets": [],
+                "narration": f"Explain why these ideas matter and how they connect within {topic}.",
+                "question": "Where would you apply this understanding?",
+                "target_words": normal_words,
+            },
+            *[
+                {
+                    **detailed_template,
+                    "title": f"Detailed Teaching {i - 3}",
+                    "narration": f"Explain subtopic {i - 3} from {topic} with worked steps.",
+                }
+                for i in range(4, 8)
+            ],
+            {
+                "title": "Practical Applications",
+                "bullets": [],
+                "narration": f"Describe how {topic} shows up in real life, labs, or exams.",
+                "question": "",
+                "target_words": normal_words,
+            },
+            {
+                "title": "Quiz & Summary",
+                "bullets": [],
+                "narration": "Summarize the lecture and prepare students for recall.",
+                "question": "1. Question 1?\n2. Question 2?\n3. Question 3?\n4. Question 4?\n5. Question 5?",
+                "target_words": "120-150",
+            },
+        ]
+
+    def _split_source_into_sections(self, text: str, parts: int) -> List[str]:
+        """Split source text into roughly even segments for fallback synthesis."""
+        cleaned = re.sub(r"\s+", " ", text or "").strip()
+        if not cleaned:
+            return [""] * parts
+        
+        sentences = re.split(r"(?<=[.!?।])\s+", cleaned)
+        if not sentences:
+            return [""] * parts
+        
+        chunk_size = max(1, len(sentences) // parts)
+        sections: List[str] = []
+        for i in range(parts):
+            start = i * chunk_size
+            end = (i + 1) * chunk_size if i < parts - 1 else len(sentences)
+            chunk = " ".join(sentences[start:end]).strip()
+            sections.append(chunk)
+        
+        while len(sections) < parts:
+            sections.append("")
+        
+        return sections[:parts]
+
+    def _summarize_text(self, text: str, target_words: str, *, fallback: str) -> str:
+        """Summarize source text to the lower bound of the requested word range."""
+        if not text:
+            return fallback
+        
+        match = re.match(r"(\d+)", target_words or "")
+        limit = int(match.group(1)) if match else 120
+        words = text.split()
+        if not words:
+            return fallback
+        
+        snippet = " ".join(words[:limit])
+        return snippet + ("..." if len(words) > limit else "")
+
+    def _guess_topic_title(self, text: str) -> str:
+        """Heuristically derive a title-sized phrase from the source text."""
+        for line in text.splitlines():
+            candidate = line.strip()
+            if len(candidate.split()) >= 2:
+                return candidate[:80]
+        return "This Chapter"
     
     async def answer_question(
         self,
