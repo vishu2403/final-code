@@ -967,6 +967,25 @@ async def get_playback_payload(
     requested_id = str(lecture_id)
     lecture_url = record.get("lecture_url")
 
+    # Derive duration in minutes for playback payload using existing metadata
+    duration_minutes: Optional[int] = None
+    if isinstance(record, dict):
+        duration_candidates = [
+            record.get("estimated_duration"),
+            record.get("requested_duration"),
+            (record.get("metadata") or {}).get("duration"),
+        ]
+        for candidate in duration_candidates:
+            if candidate is not None:
+                try:
+                    duration_minutes = int(candidate)
+                    break
+                except (TypeError, ValueError):
+                    continue
+
+
+
+
     if lecture_url:
         prefix, sep, filename = lecture_url.rpartition("/")
         if sep:
@@ -986,6 +1005,7 @@ async def get_playback_payload(
         "title": record.get("title"),
         "cover_photo_url": record.get("cover_photo_url"),
         "lecture_url": lecture_url,
+        "duration": duration_minutes,
     }
 
 

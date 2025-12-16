@@ -494,6 +494,22 @@ async def list_played_lectures(admin_id: Optional[int] = None) -> List[Dict[str,
         if play_count <= 0:
             continue
 
+        # Derive duration in minutes using existing lecture metadata
+        duration_minutes: Optional[int] = None
+        if isinstance(record, dict):
+            duration_candidates = [
+                record.get("estimated_duration"),
+                record.get("requested_duration"),
+                (record.get("metadata") or {}).get("duration"),
+            ]
+            for candidate in duration_candidates:
+                if candidate is not None:
+                    try:
+                        duration_minutes = int(candidate)
+                        break
+                    except (TypeError, ValueError):
+                        continue
+
         played.append(
             {
                 "lecture_id": row.get("lecture_uid"),
@@ -502,7 +518,10 @@ async def list_played_lectures(admin_id: Optional[int] = None) -> List[Dict[str,
                 "play_count": play_count,
                 "last_played_at": record.get("last_played_at"),
                 # "lecture_url": record.get("lecture_url") or row.get("lecture_link"),
-                "lecture_url": record.get("lecture_url") or row.get("lecture_link"),"cover_photo_url": record.get("cover_photo_url") or row.get("cover_photo_url"),
+                # "lecture_url": record.get("lecture_url") or row.get("lecture_link"),"cover_photo_url": record.get("cover_photo_url") or row.get("cover_photo_url"),
+                "lecture_url": record.get("lecture_url") or row.get("lecture_link"),
+                "cover_photo_url": record.get("cover_photo_url") or row.get("cover_photo_url"),
+                "duration": duration_minutes,
             }
         )
 
