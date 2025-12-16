@@ -677,6 +677,18 @@ def _update_video_totals(video_id: int, **deltas: int) -> None:
     with get_pg_cursor(dict_rows=False) as cur:
         cur.execute(query, params)
 
+def set_video_duration_seconds(*, video_id: int, duration_seconds: int) -> None:
+    if duration_seconds <= 0:
+        return
+    query = """
+        UPDATE student_portal_videos
+        SET duration_seconds = %(duration_seconds)s,
+            updated_at = NOW()
+        WHERE id = %(video_id)s
+          AND (duration_seconds IS NULL OR duration_seconds <> %(duration_seconds)s)
+    """
+    with get_pg_cursor(dict_rows=False) as cur:
+        cur.execute(query, {"video_id": video_id, "duration_seconds": duration_seconds})
 
 def record_watch_event(
     *,
@@ -695,40 +707,65 @@ def record_watch_event(
     with get_pg_cursor() as cur:
         cur.execute(
             """
-            SELECT watch_duration_seconds
-            FROM student_portal_video_engagement
-            WHERE video_id = %(video_id)s AND enrollment_number = %(enrollment)s
+            SELECT
+                e.watch_duration_seconds,
+                v.duration_seconds
+            FROM student_portal_videos v
+            LEFT JOIN student_portal_video_engagement e
+              ON e.video_id = v.id AND e.enrollment_number = %(enrollment)s
+            WHERE v.id = %(video_id)s
             """,
             params,
         )
-        existing = cur.fetchone()
+        row = cur.fetchone()
+
+        existing_watch = 0
+        duration_seconds = None
+        if row:
+            existing_watch = int(row.get("watch_duration_seconds") or 0)
+            duration_seconds = row.get("duration_seconds")
+            try:
+                duration_seconds = int(duration_seconds) if duration_seconds is not None else None
+            except (TypeError, ValueError):
+                duration_seconds = None
+
+        target_watch = existing_watch + int(watch_seconds)
+        if duration_seconds and duration_seconds > 0:
+            target_watch = min(target_watch, duration_seconds)
+
+        delta_added = target_watch - existing_watch
+        if delta_added <= 0:
+            return
 
         now = datetime.utcnow()
-        if existing is None:
+        if existing_watch <= 0:
             cur.execute(
                 """
                 INSERT INTO student_portal_video_engagement (
                     video_id, enrollment_number, watch_duration_seconds, last_watched_at
                 ) VALUES (%(video_id)s, %(enrollment)s, %(watch_seconds)s, %(now)s)
+                ON CONFLICT (video_id, enrollment_number)
+                DO UPDATE SET watch_duration_seconds = EXCLUDED.watch_duration_seconds,
+                              last_watched_at = EXCLUDED.last_watched_at
                 """,
-                {**params, "watch_seconds": watch_seconds, "now": now},
+                {**params, "watch_seconds": target_watch, "now": now},
             )
             _update_video_totals(
                 video_id,
                 total_watch_count=1,
-                total_watch_time_seconds=watch_seconds,
+                total_watch_time_seconds=delta_added,
             )
         else:
             cur.execute(
                 """
                 UPDATE student_portal_video_engagement
-                SET watch_duration_seconds = watch_duration_seconds + %(watch_seconds)s,
+                SET watch_duration_seconds = %(new_watch)s,
                     last_watched_at = %(now)s
                 WHERE video_id = %(video_id)s AND enrollment_number = %(enrollment)s
                 """,
-                {**params, "watch_seconds": watch_seconds, "now": now},
+                {**params, "new_watch": target_watch, "now": now},
             )
-            _update_video_totals(video_id, total_watch_time_seconds=watch_seconds)
+            _update_video_totals(video_id, total_watch_time_seconds=delta_added)
 
 
 def set_like_status(

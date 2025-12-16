@@ -355,6 +355,7 @@ async def record_video_watch(
         video_id=video_id,
         enrollment_number=current_enrollment,
         watch_seconds=payload.watch_seconds,
+        duration_seconds=payload.duration_seconds,
     )
     return ResponseBase(status=True, message="Watch progress saved", data={})
 

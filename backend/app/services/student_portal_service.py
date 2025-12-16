@@ -93,6 +93,7 @@ def _format_progress_text(
     watched_minutes = _seconds_to_minutes(watched_seconds) or 0
     duration_minutes = _seconds_to_minutes(duration_seconds)
     if duration_minutes and duration_minutes > 0:
+        watched_minutes = min(watched_minutes, duration_minutes)
         return f"{watched_minutes}/{duration_minutes} Min"
     if watched_minutes > 0:
         return f"{watched_minutes} Min watched"
@@ -702,12 +703,18 @@ def record_video_watch(
     video_id: int,
     enrollment_number: str,
     watch_seconds: int,
+    duration_seconds: Optional[int] = None,
 ) -> None:
     if watch_seconds <= 0:
         return
     video = student_portal_video_repository.get_video(video_id)
     if video is None or video.get("admin_id") != current_context["admin_id"]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found")
+    if duration_seconds and duration_seconds > 0:
+        student_portal_video_repository.set_video_duration_seconds(
+            video_id=video_id,
+            duration_seconds=duration_seconds,
+        )
     student_portal_video_repository.record_watch_event(
         video_id=video_id,
         enrollment_number=enrollment_number,

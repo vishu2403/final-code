@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from attr.converters import optional
 from pydantic import BaseModel, EmailStr, Field, HttpUrl
 
 
@@ -62,6 +63,7 @@ class StudentChangePasswordRequest(BaseModel):
 
 class StudentVideoWatchRequest(BaseModel):
     watch_seconds: int = Field(..., ge=1, le=60 * 60)
+    duration_seconds: Optional[int] = Field(None, ge=1, le=60 * 60 * 24)
 
 
 class StudentVideoUploadRequest(BaseModel):
