@@ -38,7 +38,8 @@ RUN pip install --upgrade pip \
 COPY backend ./backend
 
 # (Optional but recommended) non-root user
-RUN useradd -m appuser
+RUN useradd -m appuser \
+    && chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8000
