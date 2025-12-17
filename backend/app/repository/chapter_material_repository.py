@@ -1204,3 +1204,5 @@ def read_pdf_context_for_material(material_file_path: str, max_chars: int = 12_0
     except Exception:
         logger.debug("read_pdf not available or failed; returning empty string")
         return ""
+
+
