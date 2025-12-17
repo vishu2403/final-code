@@ -31,6 +31,7 @@ router = APIRouter(prefix="/student-management", tags=["Student Management"])
 TEMPLATE_HEADERS = [
     "Enrollment Number",
     "First Name",
+    "Middle Name",
     "Last Name",
     "Std",
     "Div",
@@ -96,6 +97,7 @@ def _duplicate_row_payload(
     row_number: int | None,
     enrollment_number: str,
     first_name: str,
+    middle_name: Optional[str],
     last_name: Optional[str],
     std: str,
     division: Optional[str],
@@ -106,6 +108,7 @@ def _duplicate_row_payload(
         # "row_number": row_number,
         "enrollment_number": enrollment_number,
         "first_name": first_name,
+        "middle_name": middle_name,
         "last_name": last_name,
         "std": std,
         "division": division,
@@ -127,6 +130,7 @@ def _build_duplicate_report(rows: List[dict]) -> dict:
                 row.get("row_number"),
                 row.get("enrollment_number"),
                 row.get("first_name"),
+                row.get("middle_name"),
                 row.get("last_name"),
                 row.get("std"),
                 row.get("division"),
@@ -159,6 +163,7 @@ async def upload_student_roster(
         for index, row in enumerate(rows, start=2):
             enrollment_number = _normalize_value(row.get("Enrollment Number"))
             first_name = _normalize_value(row.get("First Name"))
+            middle_name = _normalize_value(row.get("Middle Name")) or None
             last_name = _normalize_value(row.get("Last Name")) or None
             std = _normalize_value(row.get("Std"))
             division = _normalize_value(row.get("Div")) or None
@@ -177,6 +182,7 @@ async def upload_student_roster(
                     row_number=index,
                     enrollment_number=enrollment_number,
                     first_name=first_name,
+                    middle_name=middle_name,
                     last_name=last_name,
                     std=std,
                     division=division,
@@ -192,6 +198,7 @@ async def upload_student_roster(
                     "row_number": index,
                     "enrollment_number": enrollment_number,
                     "first_name": first_name,
+                    "middle_name": middle_name,
                     "last_name": last_name,
                     "std": std,
                     "division": division,
@@ -250,6 +257,7 @@ async def upload_student_roster(
                     row_number=entry.get("row_number"),
                     enrollment_number=entry["enrollment_number"],
                     first_name=entry["first_name"],
+                    middle_name=entry.get("middle_name"),
                     last_name=entry.get("last_name"),
                     std=entry["std"],
                     division=entry.get("division"),
@@ -291,6 +299,8 @@ async def upload_student_roster(
     if duplicate_report:
         response_data["duplicate_report"] = duplicate_report
     return ResponseBase(status=bool(entries), message=message, data=response_data)
+
+
 @router.post("/single", response_model=ResponseBase)
 async def create_single_roster_student(
     payload: Dict[str, Any] = Body(...),
@@ -317,6 +327,13 @@ async def create_single_roster_student(
         payload.get("first_name")
         or payload.get("First Name")
     )
+
+    # Middle name is optional; support both snake_case and template-style key
+    middle_name_raw = (
+        payload.get("middle_name")
+        or payload.get("Middle Name")
+    )
+    middle_name = _normalize_value(middle_name_raw) or None
     last_name_raw = (
         payload.get("last_name")
         or payload.get("Last Name")
@@ -360,6 +377,7 @@ async def create_single_roster_student(
     entry = {
         "enrollment_number": enrollment_number,
         "first_name": first_name,
+        "middle_name": middle_name,
         "last_name": last_name,
         "std": std_val,
         "division": division,
@@ -386,6 +404,7 @@ async def create_single_roster_student(
     }
 
     return ResponseBase(status=True, message="Student added successfully", data=response_data)
+
 @router.get("/roster", response_model=ResponseBase)
 async def list_student_roster(current_user: dict = Depends(member_required(WorkType.STUDENT))) -> ResponseBase:
     admin_id = current_user["admin_id"]
@@ -635,6 +654,8 @@ async def update_roster_student(
         else:
             profile_data = existing_profile
     else:
+        # Do not auto-create a new profile when updating roster.
+        # Simply keep profile data as None or existing_profile (which is already None).
         profile_data = existing_profile
 
     # -------------------------

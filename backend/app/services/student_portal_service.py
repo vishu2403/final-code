@@ -322,7 +322,8 @@ def get_profile_status(enrollment_number: str) -> Dict[str, object]:
     if roster_entry:
         prefill = {
             "first_name": roster_entry.get("first_name", ""),
-            "father_name": roster_entry.get("last_name") or "",
+            "middle_name": "",
+            "last_name": roster_entry.get("last_name") or "",
             "class_stream": roster_entry.get("std", ""),
             "division": roster_entry.get("division", ""),
             "enrollment_number": roster_entry.get("enrollment_number", normalized),
@@ -337,7 +338,8 @@ def get_profile_status(enrollment_number: str) -> Dict[str, object]:
 def upsert_student_profile(
     *,
     first_name: str,
-    father_name: str,
+    middle_name: Optional[str],
+    last_name:Optional[str],
     class_stream: str,
     enrollment_number: str,
     division: Optional[str],
@@ -352,7 +354,8 @@ def upsert_student_profile(
 
     payload = {
         "first_name": first_name.strip(),
-        "father_name": father_name.strip(),
+        "middle_name": _sanitize(middle_name),
+        "last_name": _sanitize(last_name),
         "class_stream": class_stream.strip(),
         "division": _sanitize(division),
         "class_head": _sanitize(class_head),

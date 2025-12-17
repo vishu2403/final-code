@@ -22,7 +22,8 @@ _ACCOUNT_COLUMNS: List[str] = [
 _PROFILE_COLUMNS: List[str] = [
     "id",
     "first_name",
-    "father_name",
+    "middle_name",
+    "last_name",
     "class_stream",
     "division",
     "class_head",
@@ -232,7 +233,8 @@ def create_student_profile(**fields: Any) -> Dict[str, Any]:
 
     columns = [
         "first_name",
-        "father_name",
+        "middle_name",
+        "last_name",
         "class_stream",
         "division",
         "class_head",
@@ -267,7 +269,8 @@ def update_student_profile(profile_id: int, **fields: Any) -> Optional[Dict[str,
 
     allowed_columns = {
         "first_name",
-        "father_name",
+        "middle_name",
+        "last_name",
         "class_stream",
         "division",
         "class_head",
@@ -402,7 +405,7 @@ def list_students_for_class(
             r.first_name AS roster_first_name,
             r.last_name AS roster_last_name,
             p.first_name AS profile_first_name,
-            p.father_name AS profile_last_name,
+            p.last_name AS profile_last_name,
             p.class_stream,
             p.division AS profile_division,
             p.photo_path

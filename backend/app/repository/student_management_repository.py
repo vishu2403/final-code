@@ -47,8 +47,8 @@ def insert_roster_entries(admin_id: int, entries: List[Dict[str, Any]]) -> None:
 
     insert_sql = (
         "INSERT INTO student_roster_entries "
-        "(admin_id, enrollment_number, first_name, last_name, std, division, auto_password, assigned_member_id) "
-        "VALUES (%(admin_id)s, %(enrollment_number)s, %(first_name)s, %(last_name)s, %(std)s, %(division)s, %(auto_password)s, %(assigned_member_id)s)"
+        "(admin_id, enrollment_number, first_name,middle_name, last_name, std, division, auto_password, assigned_member_id) "
+        "VALUES (%(admin_id)s, %(enrollment_number)s, %(first_name)s, %(middle_name)s, %(last_name)s, %(std)s, %(division)s, %(auto_password)s, %(assigned_member_id)s)"
     )
 
     payload = [
@@ -56,6 +56,7 @@ def insert_roster_entries(admin_id: int, entries: List[Dict[str, Any]]) -> None:
             "admin_id": admin_id,
             "enrollment_number": entry["enrollment_number"],
             "first_name": entry["first_name"],
+            "middle_name": entry.get("middle_name"),
             "last_name": entry.get("last_name"),
             "std": entry["std"],
             "division": entry.get("division"),
@@ -81,7 +82,7 @@ def update_roster_entry(
     if not fields:
         return None
 
-    allowed_columns = {"first_name", "last_name", "std", "division", "auto_password"}
+    allowed_columns = {"first_name","middle_name", "last_name", "std", "division", "auto_password"}
     invalid = set(fields.keys()) - allowed_columns
     if invalid:
         raise ValueError(f"Invalid roster columns: {', '.join(sorted(invalid))}")
@@ -156,7 +157,7 @@ def fetch_roster_entries(admin_id: int, *, member_id: Optional[int] = None) -> L
         conditions.append("assigned_member_id = %(member_id)s")
 
     query = (
-        "SELECT enrollment_number, first_name, last_name, std, division, auto_password, created_at "
+        "SELECT enrollment_number, first_name, middle_name, last_name, std, division, auto_password, created_at "
         "FROM student_roster_entries "
         "WHERE " + " AND ".join(conditions) + " "
         "ORDER BY created_at DESC"
@@ -229,6 +230,7 @@ def fetch_student_profiles(
             SELECT
                 r.enrollment_number,
                 r.first_name        AS roster_first_name,
+                r.middle_name        AS roster_middle_name,
                 r.last_name         AS roster_last_name,
                 r.std,
                 r.division          AS roster_division,
@@ -271,6 +273,7 @@ def fetch_student_profiles(
                 r.id,
                 r.enrollment_number,
                 r.first_name,
+                r.middle_name,
                 r.last_name,
                 r.std,
                 r.division,
@@ -294,6 +297,7 @@ def fetch_student_profiles(
             SELECT
                 r.enrollment_number,
                 r.first_name        AS roster_first_name,
+                r.middle_name       AS roster_middle_name,
                 r.last_name         AS roster_last_name,
                 r.std,
                 r.division          AS roster_division,

@@ -120,7 +120,8 @@ async def student_profile_status(enrollment_number: str):
 @router.post("/profile", response_model=StudentProfileResponse, status_code=status.HTTP_201_CREATED)
 async def create_or_update_student_profile(
     first_name: str = Form(...),
-    father_name: str = Form(...),
+    middle_name: Optional[str] = Form(None),
+    last_name: Optional[str] = Form(None),
     class_stream: str = Form(...),
     enrollment_number: str = Form(...),
     division: Optional[str] = Form(None),
@@ -137,7 +138,8 @@ async def create_or_update_student_profile(
 
     profile = student_portal_service.upsert_student_profile(
         first_name=first_name,
-        father_name=father_name,
+        middle_name=middle_name,
+        last_name=last_name,
         class_stream=class_stream,
         enrollment_number=enrollment_number,
         division=division,

@@ -10,7 +10,8 @@ from pydantic import BaseModel, EmailStr, Field, HttpUrl
 
 class StudentProfileBase(BaseModel):
     first_name: str = Field(..., max_length=255)
-    father_name: str = Field(..., max_length=255)
+    middle_name: Optional[str] = Field(None, max_length=255)
+    last_name: Optional[str] = Field(None, max_length=255)
     class_stream: str = Field(..., max_length=255)
     division: Optional[str] = Field(None, max_length=255)
     class_head: Optional[str] = Field(None, max_length=255)
